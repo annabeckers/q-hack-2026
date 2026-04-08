@@ -1,0 +1,1895 @@
+openapi: 3.1.0
+info:
+  title: AI Usage Intelligence Platform — Dashboard API
+  description: |
+    Full-featured analytics API for real-time monitoring of enterprise AI usage, security risks, and compliance tracking.
+    
+    **Key Features:**
+    - Multi-dimensional cost & usage analytics (department, model, tool, region)
+    - Severity-stratified security findings (secrets, PII, slopsquatting)
+    - EU AI Act compliance scoring and audit trails
+    - Time-series trends and anomaly detection
+    - Real-time alert stream and conversation drill-down
+    - Context exposure risk assessment and department attribution
+    
+    **Base URL:** `/api/v1/dashboard`
+  version: "1.0.0"
+  contact:
+    name: "Platform Team"
+    email: "platform@company.com"
+  x-logo:
+    url: "https://company.com/logo.png"
+
+servers:
+  - url: "http://localhost:8000/api/v1/dashboard"
+    description: "Local development"
+  - url: "https://api.company.com/api/v1/dashboard"
+    description: "Production"
+
+tags:
+  - name: Overview
+    description: High-level dashboard summaries and KPIs
+  - name: Analytics
+    description: Cost, usage, and department attribution
+  - name: Security
+    description: Findings, leaks, severity, and risk assessment
+  - name: Compliance
+    description: EU AI Act scoring, audit trails, remediation
+  - name: Trends
+    description: Time-series, anomalies, and behavioral patterns
+  - name: Alerts
+    description: Real-time notifications and alert management
+  - name: Explorer
+    description: Drill-down conversation and context analysis
+
+paths:
+  # ========================================================================
+  # OVERVIEW ENDPOINTS
+  # ========================================================================
+
+  /summary:
+    get:
+      summary: "Dashboard Overview — Main Summary Card"
+      tags: [Overview]
+      description: |
+        Returns the "above the fold" KPIs for the main dashboard view:
+        - Total cost YTD, usage volume, leaked items
+        - Compliance score, critical findings count
+        - Anomalies flagged
+      operationId: getDashboardSummary
+      parameters:
+        - name: time_range
+          in: query
+          schema:
+            type: string
+            enum: [week, month, quarter, ytd]
+            default: month
+          description: Aggregation period
+        - name: department
+          in: query
+          schema:
+            type: string
+          description: Filter by department (optional)
+      responses:
+        "200":
+          description: "Dashboard summary"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /summary/compliance-gauge:
+    get:
+      summary: "EU AI Act Compliance Gauge"
+      tags: [Overview]
+      description: |
+        Real-time compliance score (0-100) and breakdown by audit pillar:
+        - Purpose logged indicator
+        - Region logged indicator  
+        - Model name tracked indicator
+        - Department attributed indicator
+        - User pseudonymized indicator
+      operationId: getComplianceGauge
+      parameters:
+        - name: department
+          in: query
+          schema:
+            type: string
+          description: Filter by department (optional)
+      responses:
+        "200":
+          description: "Compliance score and audit breakdown"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceScore"
+
+  # ========================================================================
+  # ANALYTICS ENDPOINTS
+  # ========================================================================
+
+  /analytics/cost:
+    get:
+      summary: "Cost Analysis by Dimension"
+      tags: [Analytics]
+      description: |
+        Session-first cost analytics.
+        Cost is calculated per session first, then aggregated by the requested dimension
+        (department, model, tool, region, or time).
+      operationId: getCostAnalytics
+      parameters:
+        - name: dimension
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [department, model, tool, region, timespan]
+          description: Aggregation dimension
+        - name: cost_basis
+          in: query
+          schema:
+            type: string
+            enum: [per_session]
+            default: per_session
+          description: Cost computation basis. Always per session for this endpoint.
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: week
+          description: Time grouping (for timespan dimension)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Top-N results
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Start of aggregation window (default 30d ago)
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: End of aggregation window (default now)
+      responses:
+        "200":
+          description: "Cost breakdown"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  costBasis:
+                    type: string
+                    enum: [per_session]
+                  dimension:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CostBucket"
+                  total:
+                    type: number
+                    format: double
+                  totalRecords:
+                    type: integer
+                  trendSparklines:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: number
+
+  /analytics/usage:
+    get:
+      summary: "Average Usage per Session by Dimension"
+      tags: [Analytics]
+      description: |
+        Session-level usage analytics.
+        Supports average model usage per session with word count as the primary metric.
+      operationId: getUsageAnalytics
+      parameters:
+        - name: dimension
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [department, model, tool, region]
+        - name: metric
+          in: query
+          schema:
+            type: string
+            enum: [avgWordCountPerSession, events, tokens, sessions]
+            default: avgWordCountPerSession
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: "Usage breakdown"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dimension:
+                    type: string
+                  metric:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UsageBucket"
+
+  /analytics/department:
+    get:
+      summary: "Department Attribution — Comprehensive View"
+      tags: [Analytics]
+      description: |
+        Per-department profiling: cost, usage, trivial use %, private use %, leak distribution.
+        Key insight: "Engineering generates 80% of costs but 90% of leaks."
+      operationId: getDepartmentAnalytics
+      parameters:
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [cost, events, tokens, leakCount, complianceScore]
+            default: cost
+      responses:
+        "200":
+          description: "Department metrics"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DepartmentStats"
+
+  /analytics/model-comparison:
+    get:
+      summary: "Model Comparison Matrix"
+      tags: [Analytics]
+      description: |
+        Cost per token, leak rate, hallucination rate (slopsquatting), usage volume.
+        Enables: "Claude has 50% lower leak rate than ChatGPT-4o for same workload."
+      operationId: getModelComparison
+      parameters:
+        - name: department
+          in: query
+          schema:
+            type: string
+          description: Filter by department (optional)
+      responses:
+        "200":
+          description: "Model metrics comparison"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ModelMetrics"
+
+  # ========================================================================
+  # SECURITY — FINDINGS & LEAKS
+  # ========================================================================
+
+  /security/findings:
+    get:
+      summary: "All Security Findings — Paginated List"
+      tags: [Security]
+      description: |
+        Unified view of all findings across categories (secrets, PII, slopsquatting),
+        stratified by severity (critical, high, medium).
+        Supports filtering, sorting, and pagination for analyst drill-down.
+      operationId: getFindings
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [secret, pii, slopsquat, all]
+            default: all
+          description: Finding category
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, all]
+            default: all
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, acknowledged, resolved]
+            default: open
+          description: Remediation status
+        - name: department
+          in: query
+          schema:
+            type: string
+          description: Filter by department
+        - name: provider
+          in: query
+          schema:
+            type: string
+          description: Filter by LLM provider
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [timestamp, severity, provider]
+            default: timestamp
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: "Findings list with pagination"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Finding"
+                  total:
+                    type: integer
+                  offset:
+                    type: integer
+                  limit:
+                    type: integer
+
+  /security/findings/{id}:
+    get:
+      summary: "Finding Detail — Full Context"
+      tags: [Security]
+      description: |
+        Retrieve individual finding with full context window (±200 chars),
+        conversation metadata, and remediation history.
+      operationId: getFindingDetail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Finding ID
+      responses:
+        "200":
+          description: "Full finding detail"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FindingDetail"
+
+  /security/findings/{id}/remediation:
+    patch:
+      summary: "Update Finding Remediation Status"
+      tags: [Security]
+      description: |
+        Transition finding through remediation lifecycle:
+        open → acknowledged → resolved
+      operationId: updateFindingStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [acknowledged, resolved]
+                notes:
+                  type: string
+                  description: Remediation notes for audit trail
+              required: [status]
+      responses:
+        "200":
+          description: "Status updated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Finding"
+
+  /security/severity-distribution:
+    get:
+      summary: "Severity Distribution by Finding Type"
+      tags: [Security]
+      description: |
+        Histogram of findings by severity level within each category.
+        Example: "3 critical secrets, 8 high secrets, 12 medium PII"
+      operationId: getSeverityDistribution
+      parameters:
+        - name: department
+          in: query
+          schema:
+            type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Severity counts by type"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secrets:
+                    $ref: "#/components/schemas/SeverityBucket"
+                  pii:
+                    $ref: "#/components/schemas/SeverityBucket"
+                  slopsquat:
+                    $ref: "#/components/schemas/SeverityBucket"
+
+  /security/leak-counts:
+    get:
+      summary: "Leak Counts by Model and Category"
+      tags: [Security]
+      description: |
+        Returns leak counts grouped by model and leak category.
+        Supports filtering by model and category as query parameters.
+      operationId: getLeakCounts
+      parameters:
+        - name: model
+          in: query
+          schema:
+            type: string
+          description: Filter by model name (optional)
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [secret, pii, slopsquat]
+          description: Filter by leak category (optional)
+      responses:
+        "200":
+          description: "Leak counts grouped by model and category"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeakCountSummary"
+
+  /security/slopsquatting:
+    get:
+      summary: "Hallucinated Package Detection per Model"
+      tags: [Security]
+      description: |
+        Slopsquatting findings ranked by AI provider, showing hallucination rate
+        and fabrication types (packages, endpoints, CLI tools, RBAC roles).
+      operationId: getSlopsquattingByModel
+      parameters:
+        - name: dimension
+          in: query
+          schema:
+            type: string
+            enum: [model, provider, department]
+            default: model
+          description: Aggregation dimension for hallucination-rate breakdown
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [count, hallucRate]
+            default: count
+      responses:
+        "200":
+          description: "Hallucination metrics per provider"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SlopsquattingStats"
+
+  /security/context-risk:
+    get:
+      summary: "Context Window Accumulation Risk"
+      tags: [Security]
+      description: |
+        Top-10 riskiest sessions by context exposure score.
+        Risk = weighted sum of sensitive file types read into AI context.
+        Examples: .env files, private keys, Docker Compose files, SQL schemas.
+      operationId: getContextRisk
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: "Risky sessions ranked by exposure"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContextExposureSession"
+
+  /security/file-exposure:
+    get:
+      summary: "File Type Exposure Heatmap"
+      tags: [Security]
+      description: |
+        Which sensitive file types (.env, .pem, .p12, config.yaml, docker-compose.yml, .sql)
+        are being read into AI context? Cross-reference by department.
+      operationId: getFileExposure
+      responses:
+        "200":
+          description: "File type and department matrix"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  heatmap:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      additionalProperties:
+                        type: integer
+                  highRiskCombos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        fileType:
+                          type: string
+                        department:
+                          type: string
+                        count:
+                          type: integer
+
+  /security/duplicate-secrets:
+    get:
+      summary: "Cross-User Duplicate Secret Detection"
+      tags: [Security]
+      description: |
+        Identifies credentials leaked by multiple users (after anonymization).
+        Indicates systemic compromise vs one-off incident.
+        Returns: hash of secret, count of affected users, sessions flagged.
+      operationId: getDuplicateSecrets
+      parameters:
+        - name: minUsers
+          in: query
+          schema:
+            type: integer
+            default: 2
+          description: Only show secrets leaked by N+ users
+      responses:
+        "200":
+          description: "Credentials leaked by multiple users"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DuplicateSecretAlert"
+
+  # ========================================================================
+  # COMPLIANCE & AUDIT
+  # ========================================================================
+
+  /compliance/audit-trail:
+    get:
+      summary: "EU AI Act Audit Trail — Finding Actions"
+      tags: [Compliance]
+      description: |
+        Complete log of finding detection, acknowledgment, and remediation actions.
+        Supports compliance audits and AI Act verification.
+      operationId: getAuditTrail
+      parameters:
+        - name: findingId
+          in: query
+          schema:
+            type: string
+          description: Filter by finding (optional)
+        - name: department
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: "Audit trail entries"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLogEntry"
+
+  /compliance/data-flow:
+    get:
+      summary: "Data Flow Sankey — Department → Tool → Model → Region"
+      tags: [Compliance]
+      description: |
+        Visualize data egress flows and cross-border transfers.
+        Answers: "Are German employees sending data to US-based providers?" 
+        Requires GDPR-relevant DPA tracking per provider-region combo.
+      operationId: getDataFlow
+      parameters:
+        - name: department
+          in: query
+          schema:
+            type: string
+          description: Filter by department (optional)
+      responses:
+        "200":
+          description: "Flow paths and volumes"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        label:
+                          type: string
+                        type:
+                          type: string
+                          enum: [department, tool, model, region]
+                  links:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        source:
+                          type: string
+                        target:
+                          type: string
+                        value:
+                          type: number
+                          description: Token volume
+
+  /compliance/provider-dpa:
+    get:
+      summary: "Provider Data Retention & DPA Status"
+      tags: [Compliance]
+      description: |
+        Compliance metadata per provider: data retention period, jurisdiction,
+        DPA status, GDPR Art. 28 compliance indicator.
+        Flags: high-risk combinations (long retention + non-EU jurisdiction).
+      operationId: getProviderDPA
+      responses:
+        "200":
+          description: "Provider compliance matrix"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProviderComplianceMetadata"
+
+  # ========================================================================
+  # TRENDS & ANOMALIES
+  # ========================================================================
+
+  /trends/timeseries:
+    get:
+      summary: "Time-Series Metrics — Cost, Usage, Leaks"
+      tags: [Trends]
+      description: |
+        Hourly, daily, or weekly aggregates of cost, event count, token volume, and findings.
+        Supports trend sparklines for "did the new policy reduce incidents?"
+      operationId: getTimeSeries
+      parameters:
+        - name: metric
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [cost, events, tokens, findings]
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [hour, day, week]
+            default: day
+        - name: department
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: "Time-series data points"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metric:
+                    type: string
+                  granularity:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestamp:
+                          type: string
+                          format: date-time
+                        value:
+                          type: number
+
+  /trends/anomalies:
+    get:
+      summary: "Behavioral Anomaly Detection via Statistical Baseline"
+      tags: [Trends]
+      description: |
+        Z-score detection against 30-day rolling baseline per department.
+        Example: "Dept X's cost spiked 400% this week — automated AI scripts?"
+      operationId: getAnomalies
+      parameters:
+        - name: department
+          in: query
+          schema:
+            type: string
+          description: Filter by department (optional)
+        - name: zscore
+          in: query
+          schema:
+            type: number
+            default: 2.0
+          description: Deviation threshold in standard deviations
+      responses:
+        "200":
+          description: "Anomalous periods"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnomalyAlert"
+
+  /trends/patterns-by-time:
+    get:
+      summary: "Time-of-Day Risk Patterns"
+      tags: [Trends]
+      description: |
+        Heatmap of leak events by hour-of-day and day-of-week.
+        Reveals: "80% of critical leaks occur after 19:00 (engineers working alone)."
+      operationId: getTimePatterns
+      responses:
+        "200":
+          description: "Risk heatmap"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hourly:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hour:
+                          type: integer
+                        leakCount:
+                          type: integer
+                        criticalCount:
+                          type: integer
+                  daily:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        dayOfWeek:
+                          type: string
+                        leakCount:
+                          type: integer
+
+  /trends/complexity-scatter:
+    get:
+      summary: "Complexity vs Leak Scatter Plot Data"
+      tags: [Trends]
+      description: |
+        X-axis: token_count (query complexity)
+        Y-axis: findings per session (leak risk)
+        Color: provider, Size: cost
+      operationId: getTrendComplexityScatter
+      parameters:
+        - name: department
+          in: query
+          schema:
+            type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Scatter plot points"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScatterPoint"
+
+  # ========================================================================
+  # ALERTS & REAL-TIME STREAM
+  # ========================================================================
+
+  /alerts:
+    get:
+      summary: "Alert Feed — Recent Findings"
+      tags: [Alerts]
+      description: |
+        Real-time alert stream of detected findings (secrets, PII, slopsquatting).
+        Supports polling or WebSocket subscription (see /alerts/stream).
+      operationId: getAlerts
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Only return alerts after this timestamp
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium]
+          description: Filter by minimum severity
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [secret, pii, slopsquat]
+          description: Filter by finding type
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: "Alert list"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Alert"
+
+  /alerts/stream:
+    get:
+      summary: "Real-Time Alert Stream (Server-Sent Events)"
+      tags: [Alerts]
+      description: |
+        WebSocket-like SSE endpoint for live findings as they're detected.
+        Enables the WOW demo moment: live leak stream on main dashboard.
+      operationId: streamAlerts
+      parameters:
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium]
+          description: Filter by minimum severity (optional)
+      responses:
+        "200":
+          description: "Event stream (Server-Sent Events)"
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /alerts/{id}/acknowledge:
+    post:
+      summary: "Acknowledge Alert"
+      tags: [Alerts]
+      operationId: acknowledgeAlert
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        "200":
+          description: "Alert acknowledged"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+
+  # ========================================================================
+  # EXPLORER — DRILL-DOWN & CONTEXT
+  # ========================================================================
+
+  /explorer/conversations:
+    get:
+      summary: "Conversation Explorer — Find Sessions by Finding"
+      tags: [Explorer]
+      description: |
+        List conversations containing security findings for drill-down analysis.
+        Supports filtering by finding ID, department, provider, date range.
+      operationId: getConversations
+      parameters:
+        - name: findingId
+          in: query
+          schema:
+            type: string
+          description: Find conversations containing this finding
+        - name: department
+          in: query
+          schema:
+            type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: hasLeaks
+          in: query
+          schema:
+            type: boolean
+            description: Only return conversations with findings
+        - name: minTokens
+          in: query
+          schema:
+            type: integer
+          description: Minimum token count
+        - name: maxTokens
+          in: query
+          schema:
+            type: integer
+          description: Maximum token count
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: "Conversation summaries"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConversationSummary"
+
+  /explorer/conversations/{conversationId}:
+    get:
+      summary: "Conversation Detail with Finding Context"
+      tags: [Explorer]
+      description: |
+        Full conversation with interleaved findings and ±200 char context windows.
+        Enables: "Show me the conversation where the AWS key leaked."
+      operationId: getConversationDetail
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Full conversation with findings"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDetail"
+
+  /explorer/complexity-scatter:
+    get:
+      summary: "Complexity vs Leak Scatter Plot Data"
+      tags: [Explorer]
+      description: |
+        X-axis: token_count (query complexity)
+        Y-axis: findings per session (leak risk)
+        Color: provider, Size: cost
+        
+        Shows: complex coding sessions = highest-risk leak surface.
+      operationId: getComplexityScatter
+      parameters:
+        - name: department
+          in: query
+          schema:
+            type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Scatter plot points"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScatterPoint"
+
+  /explorer/top-entities:
+    get:
+      summary: "Top Entities Mentioned Across Conversations"
+      tags: [Explorer]
+      description: |
+        Structured data extraction: top-N project names, external domains,
+        technologies discussed. Replaces vague LLM-generated text summary.
+      operationId: getTopEntities
+      parameters:
+        - name: entityType
+          in: query
+          schema:
+            type: string
+            enum: [project, domain, technology, all]
+            default: all
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: department
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Ranked entities"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    entity:
+                      type: string
+                    type:
+                      type: string
+                    count:
+                      type: integer
+                    confidence:
+                      type: number
+                      format: double
+
+  /explorer/shadow-ai:
+    get:
+      summary: "Shadow AI Detection — Unapproved Providers"
+      tags: [Explorer]
+      description: |
+        Identify usage of non-approved LLM providers based on configurable allowlist.
+        Typical: policy says "only Microsoft Copilot" but ChatGPT/Claude/Gemini appear in logs.
+      operationId: getShadowAI
+      responses:
+        "200":
+          description: "Unapproved provider usage"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approvedProviders:
+                    type: array
+                    items:
+                      type: string
+                  violations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        provider:
+                          type: string
+                        eventCount:
+                          type: integer
+                        departments:
+                          type: array
+                          items:
+                            type: string
+                        totalCost:
+                          type: number
+
+  /explorer/recommendations:
+    get:
+      summary: "Cost Optimization Recommendations"
+      tags: [Explorer]
+      description: |
+        Structured recommendations based on usage patterns:
+        - Trivial use case candidates for cheaper models
+        - Over-provisioning alerts
+        - Geo-optimal provider suggestions
+      operationId: getRecommendations
+      parameters:
+        - name: department
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Actionable recommendations"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Recommendation"
+
+# ===================================================================
+# COMPONENTS — SCHEMAS & RESPONSES
+# ===================================================================
+
+components:
+  schemas:
+    # Core dashboard models
+    DashboardSummary:
+      type: object
+      properties:
+        period:
+          type: string
+          description: "Time period (e.g., 'Mar 1 - Mar 31, 2026')"
+        generatedAt:
+          type: string
+          format: date-time
+        metrics:
+          type: object
+          properties:
+            totalCost:
+              type: number
+              format: double
+            totalEvents:
+              type: integer
+            totalTokens:
+              type: integer
+            totalDepartments:
+              type: integer
+            totalModels:
+              type: integer
+        findings:
+          type: object
+          properties:
+            totalFindings:
+              type: integer
+            criticalCount:
+              type: integer
+            highCount:
+              type: integer
+            mediumCount:
+              type: integer
+            categoryCounts:
+              type: object
+              properties:
+                secrets:
+                  type: integer
+                pii:
+                  type: integer
+                slopsquat:
+                  type: integer
+        compliance:
+          type: object
+          properties:
+            complianceScore:
+              type: integer
+              description: "0-100"
+            status:
+              type: string
+              enum: [green, yellow, red]
+        anomalies:
+          type: integer
+          description: "Count of anomalies flagged this period"
+        topDepartments:
+          type: array
+          items:
+            type: object
+            properties:
+              department:
+                type: string
+              cost:
+                type: number
+              events:
+                type: integer
+
+    ComplianceScore:
+      type: object
+      properties:
+        overallScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        status:
+          type: string
+          enum: [compliant, partial, non_compliant]
+        auditPillars:
+          type: array
+          items:
+            type: object
+            properties:
+              check:
+                type: string
+                enum:
+                  - purpose_logged
+                  - region_logged
+                  - model_name_logged
+                  - department_attributed
+                  - user_pseudonymized
+              description:
+                type: string
+              compliancePercentage:
+                type: integer
+              recordsCovering:
+                type: integer
+              totalRecords:
+                type: integer
+        lastAudited:
+          type: string
+          format: date-time
+
+    CostBucket:
+      type: object
+      properties:
+        key:
+          type: string
+          description: "Dimension value (dept name, model name, etc.)"
+        cost:
+          type: number
+          format: double
+          description: "Total cost aggregated from session-level cost values"
+        sessions:
+          type: integer
+          description: "Number of sessions in this bucket"
+        avgCostPerSession:
+          type: number
+          format: double
+        events:
+          type: integer
+        tokens:
+          type: integer
+        costPerToken:
+          type: number
+          format: double
+        trivialPercentage:
+          type: number
+        privatePercentage:
+          type: number
+
+    UsageBucket:
+      type: object
+      properties:
+        key:
+          type: string
+        events:
+          type: integer
+        tokens:
+          type: integer
+        sessions:
+          type: integer
+        averageTokensPerSession:
+          type: number
+        averageWordCountPerSession:
+          type: number
+          description: "Average word count per session"
+
+    LeakCountSummary:
+      type: object
+      properties:
+        model:
+          type: string
+        category:
+          type: string
+          enum: [secret, pii, slopsquat]
+        leakCount:
+          type: integer
+
+    DepartmentStats:
+      type: object
+      properties:
+        department:
+          type: string
+        cost:
+          type: number
+          format: double
+        events:
+          type: integer
+        tokens:
+          type: integer
+        leakCount:
+          type: integer
+        criticalLeaks:
+          type: integer
+        trivialPercentage:
+          type: number
+        privatePercentage:
+          type: number
+        complianceScore:
+          type: integer
+        topModels:
+          type: array
+          items:
+            type: string
+        riskScore:
+          type: number
+          description: "Derived from leak rate + cost anomalies"
+
+    ModelMetrics:
+      type: object
+      properties:
+        model:
+          type: string
+        provider:
+          type: string
+        usage:
+          type: object
+          properties:
+            events:
+              type: integer
+            tokens:
+              type: integer
+            sessions:
+              type: integer
+        costs:
+          type: object
+          properties:
+            total:
+              type: number
+            perToken:
+              type: number
+            perSession:
+              type: number
+        risk:
+          type: object
+          properties:
+            leakCount:
+              type: integer
+            leakRate:
+              type: number
+              description: "Leaks per 1000 sessions"
+            hallucRate:
+              type: number
+              description: "Slopsquatting hallucinations per 1000 sessions"
+        costPerQualityRatio:
+          type: number
+          description: "Relative score; lower = better value"
+
+    # Finding models
+    Finding:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [secret, pii, slopsquat]
+        severity:
+          type: string
+          enum: [critical, high, medium]
+        category:
+          type: string
+          description: "API key, token, credential, email, name, IP, package, etc."
+        detectedAt:
+          type: string
+          format: date-time
+        department:
+          type: string
+        user:
+          type: string
+          description: "Anonymized user identifier"
+        provider:
+          type: string
+          description: "LLM provider (OpenAI, Anthropic, Google, etc.)"
+        conversationId:
+          type: string
+        status:
+          type: string
+          enum: [open, acknowledged, resolved]
+        matchValue:
+          type: string
+          description: "Redacted/hashed representation of finding"
+        contextPreview:
+          type: string
+          description: "±200 chars surrounding the finding"
+        confidence:
+          type: number
+          format: double
+          description: "0-1 confidence score"
+
+    FindingDetail:
+      allOf:
+        - $ref: "#/components/schemas/Finding"
+        - type: object
+          properties:
+            fullContext:
+              type: string
+              description: "Extended context window"
+            remediationHistory:
+              type: array
+              items:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                  oldStatus:
+                    type: string
+                  newStatus:
+                    type: string
+                  notes:
+                    type: string
+                  actor:
+                    type: string
+            relatedFindings:
+              type: array
+              items:
+                type: string
+                description: "IDs of similar or related findings"
+            duplicateCount:
+              type: integer
+              description: "How many other users have leaked this same credential?"
+
+    SeverityBucket:
+      type: object
+      properties:
+        critical:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+
+    SlopsquattingStats:
+      type: object
+      properties:
+        provider:
+          type: string
+        hallucCount:
+          type: integer
+        hallucRate:
+          type: number
+          description: "Per 1000 sessions"
+        fabricationTypes:
+          type: object
+          properties:
+            packages:
+              type: integer
+            endpoints:
+              type: integer
+            cliTools:
+              type: integer
+            rbacRoles:
+              type: integer
+        topHallucinations:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              type:
+                type: string
+              count:
+                type: integer
+
+    ContextExposureSession:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        riskScore:
+          type: number
+          description: "Composite risk 0-100"
+        department:
+          type: string
+        provider:
+          type: string
+        filesAccessedCount:
+          type: integer
+        sensitiveFileTypes:
+          type: array
+          items:
+            type: string
+          description: ".env, .pem, config.yaml, etc."
+        duration:
+          type: string
+          format: duration
+        tokenCount:
+          type: integer
+        foundFindings:
+          type: integer
+        exposureBreakdown:
+          type: object
+          additionalProperties:
+            type: integer
+
+    DuplicateSecretAlert:
+      type: object
+      properties:
+        secretHash:
+          type: string
+          description: "SHA256 hash of credential value"
+        category:
+          type: string
+          enum: [api_key, token, db_credential]
+        firstDetected:
+          type: string
+          format: date-time
+        lastDetected:
+          type: string
+          format: date-time
+        affectedUsers:
+          type: integer
+        affectedSessions:
+          type: integer
+        departments:
+          type: array
+          items:
+            type: string
+        severity:
+          type: string
+          enum: [critical, high]
+          description: "Critical if multiple users (systemic leak)"
+
+    # Compliance models
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        action:
+          type: string
+          enum:
+            - finding_detected
+            - finding_acknowledged
+            - finding_resolved
+            - status_changed
+        findingId:
+          type: string
+        actor:
+          type: string
+          description: "System or user ID"
+        details:
+          type: object
+          description: "Action-specific metadata"
+        complianceRelevant:
+          type: boolean
+          description: "Tracks audit trail for EU AI Act"
+
+    ProviderComplianceMetadata:
+      type: object
+      properties:
+        provider:
+          type: string
+        regions:
+          type: array
+          items:
+            type: string
+        dataRetention:
+          type: object
+          properties:
+            days:
+              type: integer
+            policy:
+              type: string
+        hasGDPRDPA:
+          type: boolean
+        hasBizAssociate:
+          type: boolean
+        jurisdictions:
+          type: array
+          items:
+            type: string
+        riskLevel:
+          type: string
+          enum: [low, medium, high]
+          description: "Based on retention + jurisdiction combo"
+        recommendations:
+          type: array
+          items:
+            type: string
+
+    # Trend models
+    AnomalyAlert:
+      type: object
+      properties:
+        department:
+          type: string
+        period:
+          type: string
+          description: "e.g., '2026-04-08'"
+        metric:
+          type: string
+          enum: [cost, events, tokens, leaks]
+        baselineValue:
+          type: number
+        observedValue:
+          type: number
+        zScore:
+          type: number
+          description: "Standard deviations from baseline"
+        severity:
+          type: string
+          enum: [low, medium, high]
+        explanation:
+          type: string
+          example: "Dept X's AI cost spiked 400% — automated AI scripts?"
+
+    # Alert models
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [secret, pii, slopsquat, anomaly]
+        severity:
+          type: string
+          enum: [critical, high, medium]
+        title:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        department:
+          type: string
+        provider:
+          type: string
+        conversationId:
+          type: string
+        status:
+          type: string
+          enum: [new, acknowledged, resolved]
+        actionUrl:
+          type: string
+          description: "Link to drill-down view"
+
+    # Explorer models
+    ConversationSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        duration:
+          type: string
+          format: duration
+        department:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        tokenCount:
+          type: integer
+        cost:
+          type: number
+        findingCount:
+          type: integer
+        criticalFindings:
+          type: integer
+        purpose:
+          type: string
+        riskScore:
+          type: number
+
+    ConversationDetail:
+      allOf:
+        - $ref: "#/components/schemas/ConversationSummary"
+        - type: object
+          properties:
+            messages:
+              type: array
+              items:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    enum: [user, assistant, system]
+                  content:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+                  interleavedFindings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Finding"
+
+    ScatterPoint:
+      type: object
+      properties:
+        conversationId:
+          type: string
+        tokenCount:
+          type: integer
+          description: "X-axis: query complexity"
+        findingCount:
+          type: integer
+          description: "Y-axis: leak risk"
+        provider:
+          type: string
+          description: "Color dimension"
+        cost:
+          type: number
+          description: "Size dimension (bubble size)"
+        department:
+          type: string
+        severity:
+          type: string
+          enum: [critical, high, medium]
+          description: "Highest severity in conversation"
+
+    Recommendation:
+      type: object
+      properties:
+        id:
+          type: string
+        category:
+          type: string
+          enum:
+            - cost_optimization
+            - risk_reduction
+            - compliance_improvement
+            - performance
+        title:
+          type: string
+        description:
+          type: string
+        impact:
+          type: object
+          properties:
+            estimatedSavings:
+              type: number
+            riskReduction:
+              type: string
+              enum: [low, medium, high]
+            effortToImplement:
+              type: string
+              enum: [trivial, easy, medium, hard]
+        actions:
+          type: array
+          items:
+            type: string
+
+  responses:
+    BadRequest:
+      description: "Invalid request parameters"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+              code:
+                type: string
+              fields:
+                type: object
+
+    NotFound:
+      description: "Resource not found"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+
+    Unauthorized:
+      description: "Authentication required"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+
+    ServerError:
+      description: "Internal server error"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+              requestId:
+                type: string
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "JWT bearer token for API authentication"
+
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: "Static API key for service-to-service calls"
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+x-generators:
+  - name: Generated by AI for Hackathon Dashboard
+    description: "OpenAPI 3.1.0 specification optimized for dashboard frontend development"

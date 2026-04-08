@@ -1,0 +1,228 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AI Usage Intelligence Platform — Dashboard API",
+    "description": "Full-featured analytics API for real-time monitoring of enterprise AI usage, security risks, and compliance tracking.\n\n**Key Features:**\n- Multi-dimensional cost & usage analytics (department, model, tool, region)\n- Severity-stratified security findings (secrets, PII, slopsquatting)\n- EU AI Act compliance scoring and audit trails\n- Time-series trends and anomaly detection\n- Real-time alert stream and conversation drill-down\n- Context exposure risk assessment and department attribution\n\n**Base URL:** `/api/v1/dashboard`",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Platform Team",
+      "email": "platform@company.com"
+    },
+    "x-logo": {
+      "url": "https://company.com/logo.png"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000/api/v1/dashboard",
+      "description": "Local development"
+    },
+    {
+      "url": "https://api.company.com/api/v1/dashboard",
+      "description": "Production"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Overview",
+      "description": "High-level dashboard summaries and KPIs"
+    },
+    {
+      "name": "Analytics",
+      "description": "Cost, usage, and department attribution"
+    },
+    {
+      "name": "Security",
+      "description": "Findings, leaks, severity, and risk assessment"
+    },
+    {
+      "name": "Compliance",
+      "description": "EU AI Act scoring, audit trails, remediation"
+    },
+    {
+      "name": "Trends",
+      "description": "Time-series, anomalies, and behavioral patterns"
+    },
+    {
+      "name": "Alerts",
+      "description": "Real-time notifications and alert management"
+    },
+    {
+      "name": "Explorer",
+      "description": "Drill-down conversation and context analysis"
+    }
+  ],
+  "paths": {
+    "/summary": {
+      "get": {
+        "summary": "Dashboard Overview — Main Summary Card",
+        "tags": ["Overview"],
+        "description": "Returns the 'above the fold' KPIs for the main dashboard view:\n- Total cost YTD, usage volume, leaked items\n- Compliance score, critical findings count\n- Anomalies flagged",
+        "operationId": "getDashboardSummary",
+        "parameters": [
+          {
+            "name": "time_range",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["week", "month", "quarter", "ytd"],
+              "default": "month"
+            },
+            "description": "Aggregation period"
+          },
+          {
+            "name": "department",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by department (optional)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dashboard summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DashboardSummary": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string",
+            "description": "Time period (e.g., 'Mar 1 - Mar 31, 2026')"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "totalCost": {
+                "type": "number",
+                "format": "double"
+              },
+              "totalEvents": {
+                "type": "integer"
+              },
+              "totalTokens": {
+                "type": "integer"
+              },
+              "totalDepartments": {
+                "type": "integer"
+              },
+              "totalModels": {
+                "type": "integer"
+              }
+            }
+          },
+          "findings": {
+            "type": "object",
+            "properties": {
+              "totalFindings": {
+                "type": "integer"
+              },
+              "criticalCount": {
+                "type": "integer"
+              },
+              "highCount": {
+                "type": "integer"
+              },
+              "mediumCount": {
+                "type": "integer"
+              },
+              "categoryCounts": {
+                "type": "object",
+                "properties": {
+                  "secrets": {
+                    "type": "integer"
+                  },
+                  "pii": {
+                    "type": "integer"
+                  },
+                  "slopsquat": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          },
+          "compliance": {
+            "type": "object",
+            "properties": {
+              "complianceScore": {
+                "type": "integer",
+                "description": "0-100"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["green", "yellow", "red"]
+              }
+            }
+          },
+          "anomalies": {
+            "type": "integer",
+            "description": "Count of anomalies flagged this period"
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request parameters",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "detail": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT bearer token for API authentication"
+      },
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Static API key for service-to-service calls"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "apiKeyAuth": []
+    }
+  ]
+}
