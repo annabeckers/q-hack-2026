@@ -520,3 +520,379 @@ pi --resume
 # Sessions are in chronologically-named files
 ls ~/.pi/agent/sessions/--home-lars--/
 ```
+
+---
+
+## Data Model Diagram
+
+```mermaid
+---
+title: Chat History Data Model — Claude Code & Pi Agent
+---
+classDiagram
+    direction TB
+
+    %% ──────────────────────────────────────
+    %% CLAUDE CODE — Prompt History
+    %% ──────────────────────────────────────
+
+    class PromptHistoryEntry {
+        <<~/.claude/history.jsonl>>
+        +string display
+        +Map~string, PastedContent~ pastedContents
+        +int timestamp
+        +string project
+        +string sessionId
+    }
+
+    class PastedContent {
+        +int id
+        +string type = "text"
+        +string? content
+        +string? contentHash
+    }
+
+    PromptHistoryEntry "1" *-- "0..*" PastedContent : pastedContents
+
+    %% ──────────────────────────────────────
+    %% CLAUDE CODE — Session Registry
+    %% ──────────────────────────────────────
+
+    class SessionRegistry {
+        <<~/.claude/sessions/pid.json>>
+        +int pid
+        +string sessionId
+        +string cwd
+        +int startedAt
+        +string kind
+        +string entrypoint
+    }
+
+    %% ──────────────────────────────────────
+    %% CLAUDE CODE — Conversation Events
+    %% ──────────────────────────────────────
+
+    class CCBaseEvent {
+        <<abstract>>
+        +string type
+        +string uuid
+        +string? parentUuid
+        +string sessionId
+        +string timestamp
+        +bool isSidechain
+        +string cwd
+        +string entrypoint
+        +string version
+        +string gitBranch
+        +string userType
+    }
+
+    class CCUserEvent {
+        +string type = "user"
+        +CCUserMessage message
+        +string promptId
+        +string permissionMode
+        +string? slug
+        +string? sourceToolAssistantUUID
+    }
+
+    class CCUserMessage {
+        +string role = "user"
+        +string|ContentBlock[] content
+    }
+
+    class CCAssistantEvent {
+        +string type = "assistant"
+        +string slug
+        +CCAssistantMessage message
+    }
+
+    class CCAssistantMessage {
+        +string model
+        +string id
+        +string role = "assistant"
+        +AssistantContentBlock[] content
+        +string stop_reason
+        +string? stop_sequence
+        +Usage usage
+    }
+
+    class Usage {
+        +int input_tokens
+        +int output_tokens
+        +int cache_creation_input_tokens
+        +int cache_read_input_tokens
+    }
+
+    class ThinkingBlock {
+        +string type = "thinking"
+        +string thinking
+        +string signature
+    }
+
+    class TextBlock {
+        +string type = "text"
+        +string text
+    }
+
+    class ToolUseBlock {
+        +string type = "tool_use"
+        +string id
+        +string name
+        +Map~string, any~ input
+    }
+
+    class ToolResultBlock {
+        +string type = "tool_result"
+        +string tool_use_id
+        +string content
+        +bool is_error
+    }
+
+    class FileHistorySnapshot {
+        +string type = "file-history-snapshot"
+        +string messageId
+        +bool isSnapshotUpdate
+        +Snapshot snapshot
+    }
+
+    class Snapshot {
+        +string messageId
+        +string timestamp
+        +Map~string, FileBackup~ trackedFileBackups
+    }
+
+    class FileBackup {
+        +string backupFileName
+        +int version
+        +string backupTime
+    }
+
+    class StopHookSummary {
+        +string type = "system"
+        +string subtype = "stop_hook_summary"
+        +string level
+        +bool hasOutput
+        +int hookCount
+        +any[] hookErrors
+        +HookInfo[] hookInfos
+        +bool preventedContinuation
+        +string stopReason
+        +string toolUseID
+    }
+
+    class HookInfo {
+        +string command
+        +int durationMs
+    }
+
+    class TurnDuration {
+        +string type = "system"
+        +string subtype = "turn_duration"
+        +int durationMs
+        +int messageCount
+        +bool isMeta
+    }
+
+    class PermissionMode {
+        +string type = "permission-mode"
+        +string permissionMode
+        +string sessionId
+    }
+
+    class QueueOperation {
+        +string type = "queue-operation"
+        +string operation
+        +string content
+        +string sessionId
+        +string timestamp
+    }
+
+    class Attachment {
+        +string type = "attachment"
+        +Map~string, any~ attachment
+    }
+
+    class LastPrompt {
+        +string type = "last-prompt"
+        +string lastPrompt
+        +string sessionId
+    }
+
+    %% Inheritance
+    CCBaseEvent <|-- CCUserEvent
+    CCBaseEvent <|-- CCAssistantEvent
+    CCBaseEvent <|-- StopHookSummary
+    CCBaseEvent <|-- TurnDuration
+    CCBaseEvent <|-- Attachment
+
+    %% Compositions
+    CCUserEvent "1" *-- "1" CCUserMessage
+    CCUserMessage "1" *-- "0..*" ToolResultBlock : content (when array)
+    CCAssistantEvent "1" *-- "1" CCAssistantMessage
+    CCAssistantMessage "1" *-- "1..*" ThinkingBlock : content
+    CCAssistantMessage "1" *-- "1..*" TextBlock : content
+    CCAssistantMessage "1" *-- "0..*" ToolUseBlock : content
+    CCAssistantMessage "1" *-- "1" Usage
+    FileHistorySnapshot "1" *-- "1" Snapshot
+    Snapshot "1" *-- "0..*" FileBackup : trackedFileBackups
+    StopHookSummary "1" *-- "0..*" HookInfo
+
+    %% Tool call ↔ result linkage
+    ToolUseBlock "1" ..> "1" ToolResultBlock : id ↔ tool_use_id
+
+    %% Cross-file references
+    PromptHistoryEntry "0..*" ..> "1" SessionRegistry : sessionId
+    SessionRegistry "1" ..> "1" CCBaseEvent : sessionId → JSONL file
+
+    %% ──────────────────────────────────────
+    %% PI AGENT — Session Events
+    %% ──────────────────────────────────────
+
+    class PiBaseEvent {
+        <<abstract>>
+        +string type
+        +string id
+        +string? parentId
+        +string timestamp
+    }
+
+    class PiSession {
+        +string type = "session"
+        +string cwd
+        +int version
+    }
+
+    class PiModelChange {
+        +string type = "model_change"
+        +string modelId
+        +string provider
+    }
+
+    class PiThinkingLevel {
+        +string type = "thinking_level_change"
+        +string thinkingLevel
+    }
+
+    class PiMessage {
+        +string type = "message"
+        +PiMessageBody message
+    }
+
+    class PiMessageBody {
+        +string role
+        +PiContentBlock[] content
+        +int? timestamp
+    }
+
+    class PiThinkingBlock {
+        +string type = "thinking"
+        +string thinking
+        +string thinkingSignature
+    }
+
+    class PiTextBlock {
+        +string type = "text"
+        +string text
+    }
+
+    class PiToolCallBlock {
+        +string type = "toolCall"
+        +string id
+        +string name
+        +Map~string, any~ arguments
+    }
+
+    class PiImageBlock {
+        +string type = "image"
+        +string data
+        +string mimeType
+    }
+
+    class PiCompaction {
+        +string type = "compaction"
+        +string summary
+        +int tokensBefore
+        +string firstKeptEntryId
+        +bool fromHook
+        +CompactionDetails details
+    }
+
+    class CompactionDetails {
+        +string[] readFiles
+    }
+
+    class PiCustomEvent {
+        +string type = "custom"
+        +string customType
+        +Map~string, any~ data
+    }
+
+    %% Inheritance
+    PiBaseEvent <|-- PiSession
+    PiBaseEvent <|-- PiModelChange
+    PiBaseEvent <|-- PiThinkingLevel
+    PiBaseEvent <|-- PiMessage
+    PiBaseEvent <|-- PiCompaction
+    PiBaseEvent <|-- PiCustomEvent
+
+    %% Compositions
+    PiMessage "1" *-- "1" PiMessageBody
+    PiMessageBody "1" *-- "0..*" PiThinkingBlock : content
+    PiMessageBody "1" *-- "0..*" PiTextBlock : content
+    PiMessageBody "1" *-- "0..*" PiToolCallBlock : content
+    PiMessageBody "1" *-- "0..*" PiImageBlock : content
+    PiCompaction "1" *-- "1" CompactionDetails
+
+    %% ──────────────────────────────────────
+    %% GROUPING via namespaces
+    %% ──────────────────────────────────────
+
+    namespace ClaudeCode_PromptHistory {
+        class PromptHistoryEntry
+        class PastedContent
+    }
+
+    namespace ClaudeCode_SessionRegistry {
+        class SessionRegistry
+    }
+
+    namespace ClaudeCode_ConversationEvents {
+        class CCBaseEvent
+        class CCUserEvent
+        class CCUserMessage
+        class CCAssistantEvent
+        class CCAssistantMessage
+        class Usage
+        class ThinkingBlock
+        class TextBlock
+        class ToolUseBlock
+        class ToolResultBlock
+        class FileHistorySnapshot
+        class Snapshot
+        class FileBackup
+        class StopHookSummary
+        class HookInfo
+        class TurnDuration
+        class PermissionMode
+        class QueueOperation
+        class Attachment
+        class LastPrompt
+    }
+
+    namespace PiAgent_SessionEvents {
+        class PiBaseEvent
+        class PiSession
+        class PiModelChange
+        class PiThinkingLevel
+        class PiMessage
+        class PiMessageBody
+        class PiThinkingBlock
+        class PiTextBlock
+        class PiToolCallBlock
+        class PiImageBlock
+        class PiCompaction
+        class CompactionDetails
+        class PiCustomEvent
+    }
+```
