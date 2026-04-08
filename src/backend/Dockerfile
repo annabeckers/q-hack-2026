@@ -10,12 +10,12 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 FROM base AS deps
 COPY pyproject.toml uv.lock* ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+    uv sync --no-dev --no-install-project
 
 # ── Development ──────────────────────────────────
 FROM deps AS dev
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project
+    uv sync --no-install-project
 COPY . .
 CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
