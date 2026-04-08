@@ -1,0 +1,208 @@
+services:
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+      target: dev
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/hackathon
+      - REDIS_URL=redis://redis:6379/0
+      - NEO4J_URI=bolt://neo4j:7687
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8100
+    volumes:
+      - ./src/backend:/app
+      - /app/.venv
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+    networks:
+      - hackathon-net
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - hackathon-net
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hackathon
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./step3_schema.sql:/docker-entrypoint-initdb.d/01_ai_usage_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hackathon-net
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/hackathon
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - hackathon-net
+    restart: unless-stopped
+
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8100:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - hackathon-net
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hackathon-net
+    restart: unless-stopped
+
+  dataloader:
+    build:
+      context: ./src/dataloader
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/hackathon
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8100
+      - NEO4J_URI=bolt://neo4j:7687
+    volumes:
+      - ./src/dataloader:/app
+      - ./resources/data:/data
+      - /app/.venv
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+      neo4j:
+        condition: service_healthy
+    networks:
+      - hackathon-net
+    profiles:
+      - dataloader
+
+  rust-worker:
+    build:
+      context: ./src/rust-worker
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - hackathon-net
+    profiles:
+      - rust
+    restart: unless-stopped
+
+  # ── Observability (optional: docker compose --profile observability up) ──
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC receiver
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    networks:
+      - hackathon-net
+    profiles:
+      - observability
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./src/infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - hackathon-net
+    profiles:
+      - observability
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    ports:
+      - "3001:3000"  # 3001 to not clash with frontend
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: hackathon
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./src/infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - jaeger
+    networks:
+      - hackathon-net
+    profiles:
+      - observability
+
+volumes:
+  postgres-data:
+  neo4j-data:
+  chroma-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  hackathon-net:
+    driver: bridge

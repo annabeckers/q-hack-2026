@@ -1,0 +1,21 @@
+# Testing overrides — minimal services, SQLite, fast
+# Usage: APP_CONFIG=config/testing.yaml uv run pytest
+
+app:
+  environment: testing
+
+features:
+  agents_enabled: false
+  dataloader_enabled: false
+  rust_worker_enabled: false
+  scheduler_enabled: false
+  webhooks_enabled: false
+  sse_enabled: false
+  three_d_enabled: false
+
+databases:
+  primary: sqlite
+
+security:
+  rate_limit_rpm: 10000
+  cors_origins: "*"

@@ -1,0 +1,31 @@
+{
+  "title": "Fermat's Unproven Claim",
+  "tags": [],
+  "author": "chatgpt",
+  "count": 2,
+  "exporter": "3.1.0",
+  "date": "2026-04-08T15:45:40.044Z",
+  "url": "https://chatgpt.com/c/69aa9394-4684-8327-b8a7-ce6579c120b5",
+  "messages": [
+    {
+      "id": "user-1",
+      "author": "user",
+      "content": "Name of the mathematician that proofed a lot of things but for one thing wrote, that he doesn't have enough paper to show it and will have to do it later. That thing is still unproofen"
+    },
+    {
+      "id": "ai-1",
+      "author": "ai",
+      "content": "You’re thinking of **Pierre de Fermat**.\n\nHe wrote a note in the margin of a book claiming he had a proof for what became **Fermat's Last Theorem**, saying essentially:\n\n> _“I have discovered a truly marvelous proof of this, which this margin is too narrow to contain.”_\n\nThe theorem states that for integers n>2n>2n>2, the equation  \n\nan+bn=cna^n + b^n = c^nan+bn=cn has **no non-zero integer solutions**.\n\nFor over **350 years**, nobody could prove it. It became one of the most famous unsolved problems in mathematics.\n\nIt was finally proven in **1994** by **Andrew Wiles** (with a later correction with **Richard Taylor**). The proof uses extremely advanced tools from **Algebraic Geometry** and **Number Theory**, far beyond anything available in Fermat’s time.\n\nBrutal reality:  \n\nAlmost all mathematicians believe **Fermat never actually had a valid proof**. The modern proof is hundreds of pages and relies on concepts developed **300+ years later**.\n\nIf you want, I can also show you **the other famous “short note” problems mathematicians left behind that are still unsolved** (some of them are even stranger)."
+    },
+    {
+      "id": "user-2",
+      "author": "user",
+      "content": "Show me the other short notes"
+    },
+    {
+      "id": "ai-2",
+      "author": "ai",
+      "content": "There isn’t a big list exactly like **Fermat's Last Theorem**, but a few famous problems come from **very short remarks, letters, or marginal notes** that later exploded into massive unsolved problems.\n\nHere are some of the closest examples.\n\n### 1. **Goldbach's Conjecture**\n\nProposed in a **1742 letter** from **Christian Goldbach** to **Leonhard Euler**.\n\nThe statement is ridiculously simple:\n\n> Every even integer greater than 2 can be written as the sum of two primes.\n\nExample:  \n\n28 = 11 + 17\n\nStill **unproven today**, despite computers checking huge ranges of numbers.\n\n### 2. **Twin Prime Conjecture**\n\nA short 1800s observation that primes often appear in pairs like:\n\n- (3,5)\n\n- (11,13)\n\n- (17,19)\n\nThe conjecture says:\n\n> There are infinitely many primes that differ by 2.\n\nMassive progress was made by **Yitang Zhang** in 2013, but the full statement is still unproven.\n\n### 3. **Collatz Conjecture**\n\nProposed around 1937 by **Lothar Collatz**.\n\nThe rule fits in one sentence:\n\n1. If a number is even → divide by 2\n\n2. If odd → multiply by 3 and add 1\n\n3. Repeat\n\nClaim: **every starting number eventually reaches 1.**\n\nExample:  \n\n6 → 3 → 10 → 5 → 16 → 8 → 4 → 2 → 1\n\nLooks trivial. Still **unsolved**.\n\n### 4. **P versus NP problem**\n\nFirst formulated clearly in a short 1971 paper by **Stephen Cook**.\n\nIt asks:\n\n> If a problem’s solution can be verified quickly, can it also be solved quickly?\n\nIf **P = NP**, most modern cryptography collapses.\n\nStill open.  \n\nWorth **$1,000,000** via the **Clay Mathematics Institute**.\n\n### 5. **Riemann Hypothesis**\n\nA **short 9-page paper** in 1859 by **Bernhard Riemann**.\n\nOne sentence inside essentially says:\n\n> All nontrivial zeros of the Riemann zeta function lie on a certain line.\n\nThis single remark controls the **distribution of prime numbers**.\n\nStill unsolved.  \n\nAlso a **$1M Millennium Prize problem**.\n\n### Honest reality\n\nMathematics is full of **tiny statements that hide insane complexity**. Fermat’s note is just the most famous example.\n\nSome problems that look like **middle-school puzzles** (especially Collatz) might actually require **entirely new mathematics** to solve.\n\nIf you want, I can also show you **5 unsolved problems that look so simple a child could understand them but still break modern mathematics**. They’re even crazier than Fermat’s note."
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+# Global Docker ignore — speeds up build context
+.git
+.github
+.claude
+.venv
+venv
+node_modules
+target
+__pycache__
+*.pyc
+.env
+.env.local
+*.db
+*.duckdb
+*.duckdb.wal
+docs
+resources/experiments
+resources/presentations
+*.md
+!README.md
+.editorconfig
+turbo.json
