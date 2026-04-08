@@ -53,6 +53,7 @@ services:
       POSTGRES_DB: hackathon
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./step3_schema.sql:/docker-entrypoint-initdb.d/01_ai_usage_schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
