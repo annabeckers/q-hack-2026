@@ -9,10 +9,17 @@
 |---|---|---|
 | **Costs** | ✅ Solid | `dashboard_aggregator.py` has cost by model/dept/tool |
 | **Model usage (message counts)** | ✅ Solid | Already aggregated |
-| **Leaks: Security + Content (count per type)** | ⚠️ Miscategorized | See section below |
+| **Leaks: Security + Content (count per type)** | ⚠️ Miscategorized | See section below — needs 3 categories, not 2 |
 | **Content / Insights Summary (text)** | ❌ Weak | Unstructured text is unactionable on a dashboard |
 | **Libraries (malicious) table** | ✅ Solid | `slopsquatting_scanner.py` covers this |
 | **Scatter plot (Complexity vs Leak)** | ⚠️ Undefined | "Fragenkomplexität" isn't computed anywhere in the codebase |
+| **Provider data flow (wer sieht was?)** | ✅ Backend done | `provider_flow.py` has full analysis — just needs frontend |
+| **Trivial / "dumme Fragen" detection** | ✅ Backend done | `dashboard_aggregator.py` keyword matching — fragile but functional |
+| **Self-risk assessment (Risikoanalyse eigenes Tool)** | ❌ Missing | In concept notes but not built — see section below |
+| **Sentiment Analysis (aggregate)** | ⚠️ Undecided | In concept as maybe — legally OK if aggregate-only, needs DPIA |
+| **Zukunftige Legislaturen (EU AI Act)** | ✅ Backend done | `legislation_score()` in aggregator — needs frontend |
+| **CSV/PDF report export** | ❌ Missing | README mentions it — high pitch value, not implemented |
+| **Slopsquatting by LLM model** | ❌ Missing | Which AI model hallucinated the most packages? Compelling chart |
 
 ---
 
@@ -44,6 +51,28 @@ Also track: hallucination type breakdown per model — packages vs fabricated AP
 
 ---
 
+## Self-Risk Assessment — Pitch Narrative, Not Dashboard Feature
+
+This belongs in the **story**, not the UI. The strongest version:
+
+> "We built a monitoring tool — and the first thing we did was check whether our own tool is legal."
+
+Weave into the pitch as a 30-second segment. Preempts the inevitable judge question: "Isn't this a surveillance system?"
+
+**Key talking points:**
+
+| Design Decision | Legal Basis | Pitch Framing |
+|---|---|---|
+| Secret scanning | Employer security obligation (§ 26 BDSG) | "Clearly legal — protecting infrastructure is an employer duty" |
+| Cost/usage analytics (aggregated) | Legitimate interest, DSGVO Art. 6(1)(f) | "No individual tracking — aggregate only, by design" |
+| No individual user profiling | BetrVG §87(1) Nr. 6 co-determination | "We intentionally excluded this — it's a legal minefield in Germany, and we knew that going in" |
+| Private usage detection dropped | Same — works council co-determination | "We scoped it, researched the law, and killed the feature" |
+| All user IDs hashed | DSGVO pseudonymization | "No PII in stored data, ever" |
+
+**Why this wins points:** It shows you didn't just build — you understood the constraints, made deliberate scope decisions, and can defend them. Judges testing with "but what about privacy?" get a prepared, legally grounded answer instead of fumbling.
+
+---
+
 ## What's Missing (Standard Gaps)
 
 **1. Severity distribution for leaks**
@@ -66,6 +95,15 @@ You can see a count of leaks — then what? "Show me the conversation where the 
 
 **7. Recommendation panel**
 `concept.md` mentions "cheaper alternative recommendations" and "model comparison: cost/quality ratio." Not in frontend. A simple callout: "40% of your spend is on trivial Q&A — equivalent Mistral 7B cost would save €X/month" closes the loop from diagnosis to action.
+
+**8. Provider data flow in frontend**
+`provider_flow.py` is DONE — provider jurisdiction mapping, GDPR risk levels, codebase indexing detection, non-EU transfer flagging. All computed. Just not wired to the frontend. This is a "surface existing data" task, not a "build new feature" task.
+
+**9. CSV/PDF report export**
+README mentions "Export als CSV/PDF für Management-Reporting." Not implemented. High pitch value: "Generate a report for your CISO with one click." A JSON-to-PDF via a simple template would cover this.
+
+**10. Sentiment analysis (aggregate only)**
+In concept.md as Feature 5, in notes in parens. Legally fine when aggregate-only (department-level frustration trends, no individual attribution). Reveals adoption barriers and training needs. Needs DPIA documentation + Betriebsrat notification. Even if not built for the hackathon, mention it in the pitch as a planned feature — it's legally differentiated and shows depth.
 
 ---
 
@@ -121,23 +159,38 @@ Different providers retain conversation data for different periods (OpenAI: 30 d
 
 ## Priority Additions (Ranked)
 
-| Priority | Addition | Data Available? |
+### 🔴 Must-have for hackathon (high impact, data exists)
+
+| # | Addition | Data Available? |
 |---|---|---|
-| 🔴 1 | Severity distribution (critical/high/medium) for all finding types | Yes — `secrets_scanner.py` |
-| 🔴 2 | Slopsquatting rate by LLM model | Yes — `SlopquatCandidate.provider` |
-| 🔴 3 | EU AI Act compliance gauge | Yes — `legislation_score()` in aggregator |
-| 🟡 4 | Time-series / trend sparklines | Yes — `usage_start` indexed in DB |
-| 🟡 5 | Department attribution panel | Yes — `by_dept` in aggregator |
-| 🟡 6 | Context window accumulation risk (top 10 sessions) | Yes — `filesAccessed` in ToolInvocation |
-| 🟡 7 | Real-time alert feed | Yes — poll `flagged_secrets.jsonl` |
-| 🟡 8 | Data flow Sankey (dept → tool → model → region) | Yes — `region` field in schema |
-| 🟢 9 | Cross-user duplicate secret detection | Requires hashing step on match values |
-| 🟢 10 | Drill-down conversation explorer | Yes — `matchContext` in SecretCandidate |
-| 🟢 11 | Remediation tracking (open/ack/resolved) | Needs new DB table |
-| 🟢 12 | Time-of-day risk heatmap | Yes — `usage_start` |
-| 🟢 13 | Shadow AI detection | Yes — compare `tool_name` to allowlist |
-| 🟢 14 | Behavioral anomaly alerts | Yes — `daily_department_summary` view |
-| 🔵 15 | Prompt injection detection | Partial — needs pattern library |
+| 1 | Severity distribution (critical/high/medium) for all finding types | Yes — `secrets_scanner.py` |
+| 2 | Provider data flow in frontend | Yes — `provider_flow.py` fully computed |
+| 3 | Self-risk assessment in pitch narrative (not UI) | N/A — pitch prep, zero code |
+| 4 | EU AI Act compliance gauge | Yes — `legislation_score()` in aggregator |
+| 5 | Slopsquatting rate by LLM model | Yes — `SlopquatCandidate.provider` |
+
+### 🟡 Should-have (strong differentiation)
+
+| # | Addition | Data Available? |
+|---|---|---|
+| 6 | Department attribution panel | Yes — `by_dept` in aggregator |
+| 7 | Real-time alert feed (red sidebar) | Yes — poll `flagged_secrets.jsonl` |
+| 8 | Recommendation panel (sovereign/cheaper alternatives) | Yes — `provider_flow.py` has mappings |
+| 9 | CSV/PDF report export for management | Needs template, JSON data exists |
+| 10 | Time-series / trend sparklines | Yes — `usage_start` indexed in DB |
+
+### 🟢 Nice-to-have (outside-the-box, if time permits)
+
+| # | Addition | Data Available? |
+|---|---|---|
+| 11 | Context window accumulation risk (top sessions) | Yes — `filesAccessed` in ToolInvocation |
+| 12 | File type exposure heatmap | Yes — `filesAccessed` extensions |
+| 13 | Cross-user duplicate secret detection | Requires hashing step on match values |
+| 14 | Drill-down conversation explorer | Yes — `matchContext` in SecretCandidate |
+| 15 | Shadow AI detection (approved vs unapproved) | Yes — compare `tool_name` to allowlist |
+| 16 | Time-of-day risk heatmap | Yes — `usage_start` |
+| 17 | Sentiment analysis (aggregate only) | Needs NLP pipeline + DPIA |
+| 18 | Prompt injection detection | Partial — needs pattern library |
 
 ---
 
