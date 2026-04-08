@@ -24,33 +24,6 @@ SECRET_PATTERNS: dict[str, tuple[re.Pattern[str], str]] = {
     "tenant_id": (re.compile(r"(?i)\btenant[_-]?id\b\s*[:=]\s*['\"]?([0-9a-f-]{16,})"), "medium"),
 }
 
-PII_PATTERNS: dict[str, tuple[re.Pattern[str], str]] = {
-    "email": (re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE), "high"),
-    "ip_address": (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"), "high"),
-    "phone_number": (re.compile(r"\b(?:\+?\d{1,3}[\s-]?)?(?:\d[\s-]?){7,14}\b"), "medium"),
-    "internal_path": (re.compile(r"(?:[A-Za-z]:\\|/)[\w.\\/-]+"), "medium"),
-    "internal_url": (re.compile(r"https?://[\w.-]+(?:/[^\s]*)?", re.IGNORECASE), "medium"),
-}
-
-SLOPSQUAT_PATTERNS = [
-    re.compile(r"(?i)\b(?:pip|npm|yarn|pnpm|cargo|go|dotnet)\s+(?:install|add|get)\s+([A-Za-z0-9._-]{3,})"),
-    re.compile(r"\b[A-Z][A-Za-z0-9]+(?:\.[A-Za-z0-9]+)+\b"),
-    re.compile(r"(?i)\b(?:role|permission|scope|cmdlet|module)\b.*?([A-Za-z][A-Za-z0-9._-]{3,})"),
-]
-
-DEPARTMENT_KEYWORDS = {
-    "engineering": ["code", "debug", "test", "production", "deploy"],
-    "security": ["security", "rbac", "mailbox", "postfach"],
-    "finance": ["budget", "forecast", "invoice", "payment", "finance"],
-    "hr": ["employee", "onboarding", "cv", "bewerbung", "hr"],
-    "legal": ["contract", "vertrag", "legal"],
-    "sales": ["sales", "angebot", "lead"],
-    "support": ["support", "ticket"],
-    "marketing": ["marketing", "copy", "content"],
-    "product": ["roadmap", "product"],
-    "data": ["kpi", "report", "analysis"],
-}
-
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[5]
@@ -162,20 +135,6 @@ def _normalize_family(name: str | None) -> str:
     return lower
 
 
-def _infer_department(text: str, fallback: str | None = None) -> str | None:
-    haystack = text.lower()
-    for department, keywords in DEPARTMENT_KEYWORDS.items():
-        if any(keyword in haystack for keyword in keywords):
-            return department
-    return fallback
-
-
-def _snippet(text: str, start: int, end: int, padding: int = 60) -> str:
-    left = max(0, start - padding)
-    right = min(len(text), end + padding)
-    return text[left:right].strip()
-
-
 def _hash_id(*parts: str) -> str:
     payload = "|".join(parts).encode("utf-8", errors="ignore")
     return hashlib.sha1(payload).hexdigest()[:16]
@@ -256,87 +215,6 @@ def _load_conversations(root: str) -> tuple[ConversationRecord, ...]:
     return tuple(records)
 
 
-@lru_cache(maxsize=1)
-def _load_findings(root: str) -> tuple[FindingRecord, ...]:
-    findings: list[FindingRecord] = []
-    for conversation in _load_conversations(root):
-        department = _infer_department(conversation.title or conversation.conversation_id)
-        for message in conversation.messages:
-            text = message.content
-            role = "assistant" if message.author.lower() in {"assistant", "ai", "model", "bot"} else "user"
-
-            for category, (pattern, severity) in SECRET_PATTERNS.items():
-                for match in pattern.finditer(text):
-                    match_value = match.group(1) if match.groups() else match.group(0)
-                    findings.append(
-                        FindingRecord(
-                            id=_hash_id(conversation.conversation_id, message.id, "secret", category, match_value),
-                            type="secret",
-                            severity=severity,
-                            category=category,
-                            model=conversation.provider,
-                            provider=conversation.provider,
-                            conversation_id=conversation.conversation_id,
-                            message_id=message.id,
-                            role=role,
-                            timestamp=conversation.exported_at or datetime.now(timezone.utc),
-                            match_value=match_value,
-                            match_context=_snippet(text, match.start(), match.end()),
-                            source_field="content",
-                            confidence=0.96 if severity == "critical" else 0.9,
-                            department=department,
-                        )
-                    )
-
-            for category, (pattern, severity) in PII_PATTERNS.items():
-                for match in pattern.finditer(text):
-                    match_value = match.group(0)
-                    findings.append(
-                        FindingRecord(
-                            id=_hash_id(conversation.conversation_id, message.id, "pii", category, match_value),
-                            type="pii",
-                            severity=severity,
-                            category=category,
-                            model=conversation.provider,
-                            provider=conversation.provider,
-                            conversation_id=conversation.conversation_id,
-                            message_id=message.id,
-                            role=role,
-                            timestamp=conversation.exported_at or datetime.now(timezone.utc),
-                            match_value=match_value,
-                            match_context=_snippet(text, match.start(), match.end()),
-                            source_field="content",
-                            confidence=0.88,
-                            department=department,
-                        )
-                    )
-
-            if role == "assistant":
-                for pattern in SLOPSQUAT_PATTERNS:
-                    for match in pattern.finditer(text):
-                        match_value = match.group(1) if match.groups() else match.group(0)
-                        severity = "critical" if any(token in match_value.lower() for token in ["role", "endpoint", "password"]) else "high"
-                        findings.append(
-                            FindingRecord(
-                                id=_hash_id(conversation.conversation_id, message.id, "slopsquat", match_value),
-                                type="slopsquat",
-                                severity=severity,
-                                category="hallucinated_package",
-                                model=conversation.provider,
-                                provider=conversation.provider,
-                                conversation_id=conversation.conversation_id,
-                                message_id=message.id,
-                                role=role,
-                                timestamp=conversation.exported_at or datetime.now(timezone.utc),
-                                match_value=match_value,
-                                match_context=_snippet(text, match.start(), match.end()),
-                                source_field="content",
-                                confidence=0.8,
-                                department=department,
-                            )
-                        )
-
-    return tuple(findings)
 
 
 def _load_persisted_findings() -> tuple[FindingRecord, ...] | None:

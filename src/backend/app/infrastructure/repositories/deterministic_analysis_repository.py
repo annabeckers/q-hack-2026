@@ -104,8 +104,8 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
                 match_count INTEGER NOT NULL,
                 status TEXT NOT NULL,
                 notes TEXT,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """,
             """
@@ -120,7 +120,7 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
                 pattern TEXT NOT NULL,
                 value TEXT NOT NULL,
                 active BOOLEAN NOT NULL DEFAULT TRUE,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """,
             """
@@ -147,7 +147,7 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
                 match_context TEXT NOT NULL,
                 severity TEXT NOT NULL,
                 confidence NUMERIC(4, 2) NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (analysis_run_id, source_file, conversation_key, message_id, company_rule_id, matched_text)
             )
             """,
@@ -164,7 +164,7 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
                 financial_count INTEGER NOT NULL,
                 labels_json TEXT NOT NULL,
                 highest_severity TEXT NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (analysis_run_id, conversation_key)
             )
             """,
@@ -187,24 +187,31 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
         return result.first() is not None
 
     async def load_company_reference_rules(self) -> list[CompanyReferenceRule]:
-        result = await self._session.execute(
-            text(
-                """
-                SELECT id, source_table, source_record_id, source_field, label, category, severity, pattern, value
-                FROM deterministic_company_rules
-                ORDER BY source_table, label, source_field
-                """
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    SELECT id, source_table, source_record_id, source_field, label, category, severity, pattern, value
+                    FROM deterministic_company_rules
+                    ORDER BY source_table, label, source_field
+                    """
+                )
             )
-        )
-        rows = [CompanyReferenceRule(**row) for row in result.mappings().all()]
+        except Exception:
+            result = None
+
+        rows = [CompanyReferenceRule(**row) for row in result.mappings().all()] if result is not None else []
         if rows:
             return rows
 
         generated: list[CompanyReferenceRule] = []
 
         for table_name, field_map in RULE_FIELD_MAP.items():
-            result = await self._session.execute(text(f"SELECT * FROM {table_name}"))
-            source_rows = result.mappings().all()
+            try:
+                result = await self._session.execute(text(f"SELECT * FROM {table_name}"))
+                source_rows = result.mappings().all()
+            except Exception:
+                continue
             for row in source_rows:
                 record_id = _stringify(row.get("id"))
                 for field_name, (category, severity) in field_map.items():
@@ -253,16 +260,19 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
         return generated
 
     async def load_chat_messages(self) -> list[ChatMessageRecord]:
-        result = await self._session.execute(
-            text(
-                """
-                SELECT source_file, conversation_key, conversation_title, provider, model_name,
-                       message_id, message_timestamp, author, role, user_text_clean
-                FROM chats
-                ORDER BY conversation_timestamp NULLS LAST, message_index ASC
-                """
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    SELECT source_file, conversation_key, conversation_title, provider, model_name,
+                           message_id, message_timestamp, author, role, user_text_clean
+                    FROM chats
+                    ORDER BY conversation_timestamp NULLS LAST, message_index ASC
+                    """
+                )
             )
-        )
+        except Exception:
+            return []
         records: list[ChatMessageRecord] = []
         for row in result.mappings().all():
             records.append(
@@ -289,7 +299,7 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
             text(
                 """
                 INSERT INTO deterministic_analysis_runs (id, source_message_count, rule_count, match_count, status, notes, created_at, completed_at)
-                VALUES (:id, :source_message_count, :rule_count, :match_count, :status, NULL, NOW(), NOW())
+                VALUES (:id, :source_message_count, :rule_count, :match_count, :status, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """
             ),
             {
@@ -312,7 +322,7 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
                         category, severity, pattern, value, active, created_at
                     ) VALUES (
                         :id, :source_table, :source_record_id, :source_field, :label,
-                        :category, :severity, :pattern, :value, TRUE, NOW()
+                        :category, :severity, :pattern, :value, TRUE, CURRENT_TIMESTAMP
                     )
                     ON CONFLICT (id) DO UPDATE SET
                         source_table = EXCLUDED.source_table,
@@ -345,7 +355,7 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
                         :provider, :model_name, :message_id, :message_timestamp, :author, :role,
                         :source_field, :company_rule_id, :company_label, :company_category,
                         :company_source_table, :company_source_field, :matched_text, :match_context,
-                        :severity, :confidence, NOW()
+                        :severity, :confidence, CURRENT_TIMESTAMP
                     )
                     ON CONFLICT (analysis_run_id, source_file, conversation_key, message_id, company_rule_id, matched_text)
                     DO UPDATE SET
@@ -378,7 +388,7 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
                         secret_count, pii_count, financial_count, labels_json, highest_severity, created_at
                     ) VALUES (
                         :analysis_run_id, :conversation_key, :department, :provider, :model_name, :match_count,
-                        :secret_count, :pii_count, :financial_count, :labels_json, :highest_severity, NOW()
+                        :secret_count, :pii_count, :financial_count, :labels_json, :highest_severity, CURRENT_TIMESTAMP
                     )
                     ON CONFLICT (analysis_run_id, conversation_key) DO UPDATE SET
                         department = EXCLUDED.department,
