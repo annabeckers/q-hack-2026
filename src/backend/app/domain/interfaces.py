@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from uuid import UUID
 
 from app.domain.entities import User, Document, DataSource
+from app.domain.dashboard import ConversationRecord, FindingRecord, UsageRecord
 
 
 class AbstractRepository[T](ABC):
@@ -39,3 +40,17 @@ class AbstractDataSourceRepository(AbstractRepository[DataSource]):
 
     @abstractmethod
     async def get_active(self) -> list[DataSource]: ...
+
+
+class AbstractDashboardRepository(ABC):
+    @abstractmethod
+    def list_usage_records(self) -> list[UsageRecord]: ...
+
+    @abstractmethod
+    def list_conversations(self) -> list[ConversationRecord]: ...
+
+    @abstractmethod
+    def list_findings(self) -> list[FindingRecord]: ...
+
+    @abstractmethod
+    def update_finding_status(self, finding_id: str, status: str, notes: str | None = None) -> FindingRecord | None: ...

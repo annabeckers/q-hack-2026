@@ -1,10 +1,17 @@
 """Shared test fixtures — SQLite in-memory database, async client, test user."""
 
 from collections.abc import AsyncGenerator
+from pathlib import Path
+import sys
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.auth.password import hash_password
 from app.domain.entities import User

@@ -49,6 +49,7 @@ app = FastAPI(
         {"name": "health", "description": "Service health and metrics"},
         {"name": "agents", "description": "AI agent invocation (REST, WebSocket, SSE)"},
         {"name": "data", "description": "File upload and data streaming"},
+        {"name": "dashboard", "description": "AI usage intelligence dashboard"},
         {"name": "webhooks", "description": "External event ingestion"},
         {"name": "metrics", "description": "Prometheus-style metrics"},
     ],
@@ -66,11 +67,13 @@ from app.api.v1.endpoints.webhooks import router as webhooks_router
 from app.api.v1.endpoints.metrics import router as metrics_router
 from app.api.v1.endpoints.data_stream import router as data_stream_router
 from app.api.v1.endpoints.autonomous import router as autonomous_router
+from app.api.v1.endpoints.dashboard import router as dashboard_router
 
 app.include_router(health_router, prefix="/api/v1", tags=["health"])
 app.include_router(agents_router, prefix="/api/v1/agents", tags=["agents"])
 app.include_router(stream_router, prefix="/api/v1/agents", tags=["agents"])
 app.include_router(data_router, prefix="/api/v1/data", tags=["data"])
+app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(metrics_router, prefix="/api/v1", tags=["metrics"])
 app.include_router(data_stream_router, prefix="/api/v1/data", tags=["data"])
