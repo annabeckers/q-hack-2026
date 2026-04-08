@@ -68,8 +68,10 @@ from app.api.v1.endpoints.metrics import router as metrics_router
 from app.api.v1.endpoints.data_stream import router as data_stream_router
 from app.api.v1.endpoints.autonomous import router as autonomous_router
 from app.api.v1.endpoints.dashboard import router as dashboard_router
+from app.api.v1.endpoints.auth import router as auth_router
 
 app.include_router(health_router, prefix="/api/v1", tags=["health"])
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(agents_router, prefix="/api/v1/agents", tags=["agents"])
 app.include_router(stream_router, prefix="/api/v1/agents", tags=["agents"])
 app.include_router(data_router, prefix="/api/v1/data", tags=["data"])

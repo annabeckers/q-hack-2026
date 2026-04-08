@@ -170,30 +170,54 @@ def _load_conversations(root: str) -> tuple[ConversationRecord, ...]:
 
     for path in sorted(exports_dir.glob("*.json")):
         with path.open(encoding="utf-8") as handle:
-            payload = json.load(handle)
+            raw = json.load(handle)
 
-        messages: list[ConversationMessage] = []
-        for message in payload.get("messages", []):
-            content = _normalize_text(message.get("content"))
-            if not content:
-                continue
-            messages.append(
-                ConversationMessage(
-                    id=str(message.get("id") or _hash_id(path.stem, content[:32])),
-                    author=str(message.get("author") or "unknown"),
-                    content=content,
+        # Normalize: list-format files (e.g. wildchat) contain multiple conversations
+        payloads: list[dict] = []
+        if isinstance(raw, list):
+            for entry in raw:
+                if isinstance(entry, dict) and "conversation" in entry:
+                    # wildchat format: {conversation_hash, model, conversation: [{content, role}]}
+                    payloads.append({
+                        "title": entry.get("conversation_hash", path.stem),
+                        "author": entry.get("model", path.stem.split("_")[0]),
+                        "date": entry.get("timestamp"),
+                        "messages": [
+                            {"id": f"{entry.get('conversation_hash', '')}-{i}",
+                             "author": msg.get("role", "unknown"),
+                             "content": msg.get("content", "")}
+                            for i, msg in enumerate(entry["conversation"])
+                            if isinstance(msg, dict)
+                        ],
+                    })
+        elif isinstance(raw, dict):
+            payloads.append(raw)
+
+        for payload in payloads:
+            messages: list[ConversationMessage] = []
+            for message in payload.get("messages", []):
+                if not isinstance(message, dict):
+                    continue
+                content = _normalize_text(message.get("content"))
+                if not content:
+                    continue
+                messages.append(
+                    ConversationMessage(
+                        id=str(message.get("id") or _hash_id(path.stem, content[:32])),
+                        author=str(message.get("author") or "unknown"),
+                        content=content,
+                    )
+                )
+
+            records.append(
+                ConversationRecord(
+                    conversation_id=str(payload.get("url") or payload.get("title") or path.stem),
+                    provider=_normalize_family(str(payload.get("author") or path.stem.split("_")[0])),
+                    title=str(payload.get("title") or path.stem),
+                    exported_at=_parse_timestamp(payload.get("date")),
+                    messages=tuple(messages),
                 )
             )
-
-        records.append(
-            ConversationRecord(
-                conversation_id=str(payload.get("url") or path.stem),
-                provider=_normalize_family(str(payload.get("author") or path.stem.split("_")[0])),
-                title=str(payload.get("title") or path.stem),
-                exported_at=_parse_timestamp(payload.get("date")),
-                messages=tuple(messages),
-            )
-        )
 
     return tuple(records)
 
