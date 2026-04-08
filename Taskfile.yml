@@ -142,6 +142,12 @@ tasks:
     cmds:
       - uv run python scripts/seed_database.py
 
+  import-chats:
+    desc: Import chat export files (JSON/MD) into PostgreSQL chats table
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run python scripts/run_chat_import.py
+
   # ── Edge Deploys ──────────────────────────────
   deploy-vercel:
     desc: Deploy frontend to Vercel
