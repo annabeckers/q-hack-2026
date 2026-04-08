@@ -1,5 +1,11 @@
 # q-hack-2026
-## AI Usage Dashboard — Übersicht & Feature-Plan
+
+## Your developers are leaking secrets to AI — and nobody is watching.
+
+Real-time secret detection. Malicious package scanning. Cost and compliance visibility.
+Deployed on a Raspberry Pi you ship to any team — no cloud required, working in minutes.
+
+> Full concept: [concept.md](concept.md) | Hero statement: [hero-statement.md](hero-statement.md) | Data model: [chat-history-data-model.md](chat-history-data-model.md)
 
 ---
 
@@ -37,10 +43,8 @@
 - Kosten-Effizienz-Score je Anfrage
 - Empfehlung: einfache Fragen → günstigeres Modell oder lokales LLM
 
-### 7. LLM: Private Nutzung erkennen
-- Muster-Erkennung: private Themen (Reisen, Rezepte, Bewerbungen, …)
-- Abgleich mit erlaubten Business-Use-Cases der Firma
-- Report: Anteil private vs. berufliche Nutzung pro Abteilung
+### 7. ~~LLM: Private Nutzung erkennen~~ — DROPPED
+> Removed: BetrVG §87(1) Nr. 6 makes individual-level usage classification a works council co-determination issue. Legal minefield in Germany. See [concept.md](concept.md#legal-considerations).
 
 ### 8. Zukünftige Gesetzgebung (EU AI Act & Co.)
 - Tracking welche Modelle als "High Risk" eingestuft werden könnten
@@ -68,11 +72,18 @@
 - Gilt auch für lokale LLMs (Ollama, LM Studio) — Traffic-Analyse on-device
 - Sofortiger Alert via Slack / E-Mail / Webhook
 
-### 12. Raspberry Pi als physisches Trainingsgerät
-- Pi läuft als lokaler Proxy zwischen User und LLM-Provider
-- Loggt alle Prompts lokal (kein Cloud-Zugriff nötig)
-- Zeigt Live-Dashboard auf angeschlossenem Display
-- Trainings-Demo: zeigt live, was ein geleakter Key bedeutet
+### 12. Raspberry Pi — Plug & Play Test Lab
+**Deployment-Modell:** Unternehmen bekommen einen vorkonfigurierten Pi zugeschickt — als eigenständiges, isoliertes System zum Ausprobieren.
+- **Playground-Modus:** Separates System, kein Eingriff in bestehende Infrastruktur — nichts geht kaputt
+- **Server-Modus:** Alternativ als dauerhafter Service im bestehenden Netzwerk deploybar
+- Service startet automatisch, analysiert lokale AI-Nutzungsdaten:
+  - Geleakte Secrets, sensible Firmendaten, PII
+  - Welche Daten zu welchen Providern fließen
+  - Nutzungsmuster und Kosten-Schätzungen
+- Lokales LLM auf dem Pi für On-Device-Klassifikation (lightweight Modelle)
+- Live-Dashboard im Browser über lokales Netzwerk
+- Generiert automatisch Recommendations: Risiken, Compliance-Lücken, Optimierungen
+- Nach Testphase: Ergebnisse als Report → Grundlage für Upselling auf Full-Service
 
 ---
 
