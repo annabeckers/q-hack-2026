@@ -1,4 +1,4 @@
-# Testing overrides — minimal services, SQLite, fast
+# Testing overrides — minimal services, PostgreSQL-oriented
 # Usage: APP_CONFIG=config/testing.yaml uv run pytest
 
 app:
@@ -14,7 +14,7 @@ features:
   three_d_enabled: false
 
 databases:
-  primary: sqlite
+  primary: postgresql
 
 security:
   rate_limit_rpm: 10000

@@ -14,10 +14,6 @@ def validate_environment() -> list[str]:
     if "change-me" in settings.database_url or not settings.database_url:
         warnings.append("DATABASE_URL is not configured")
 
-    # JWT secret must be changed from default
-    if settings.jwt_secret == "change-me-in-production" and not settings.debug:
-        warnings.append("JWT_SECRET is still the default — change it for production")
-
     # At least one AI provider should be configured
     ai_configured = any([
         settings.openai_api_key,
@@ -40,7 +36,7 @@ def validate_environment() -> list[str]:
 
 def log_startup_info() -> None:
     """Log configuration summary at startup."""
-    db_type = "postgresql" if "postgresql" in settings.database_url else "sqlite"
+    db_type = "postgresql"
     log.info(
         "startup",
         database=db_type,

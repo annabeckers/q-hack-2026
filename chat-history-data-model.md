@@ -1,522 +1,401 @@
-# Chat History Data Model — Claude Code & Pi Agent
+# Unified Chat History Data Model — Security Analysis
 
-> Analysis of local conversation storage formats across Claude Code and Pi Agent.
+> Analysis of local conversation storage formats and exported chat logs from 6 different AI coding-assistant sources. This document outlines the raw data schemas and proposes a normalized data model to enable analysis for leaked secrets, slopquatting, and company/customer information.
 > Generated 2026-04-08.
 
 ---
 
-## Overview
+## Part 1: Unified Data Model Proposal
 
-| Data Source | Location | Format | Records | Size |
-|---|---|---|---|---|
-| Prompt History | `~/.claude/history.jsonl` | JSONL (1 line per user prompt) | 3,200 | 896 KB |
-| Conversations | `~/.claude/projects/<project-slug>/<session-id>.jsonl` | JSONL (1 line per event) | 2,894 files | 165.3 MB |
-| Session Registry | `~/.claude/sessions/<pid>.json` | JSON (1 file per process) | 55 | 224 KB |
-| Pi Sessions | `~/.pi/agent/sessions/--home-lars--/<timestamp>_<id>.jsonl` | JSONL (1 line per event) | 17 | 2.9 MB |
+### Sources Analyzed
 
-**Date range:** 2026-01-31 to 2026-04-08 (Claude Code), 2026-03-31 to 2026-04-07 (Pi Agent)
+| # | Source | Format | Storage Location / Files | Key Characteristics |
+|---|--------|--------|-----------------|---------------------|
+| 1 | **Claude Code** — Prompt History | JSONL | `~/.claude/history.jsonl` | Flat append-only user prompts |
+| 2 | **Claude Code** — Conversations | JSONL | `~/.claude/projects/<slug>/<session>.jsonl` | Full transcripts with tool calls, thinking, file snapshots |
+| 3 | **Claude Code** — Session Registry | JSON | `~/.claude/sessions/<pid>.json` | Lightweight PID ↔ session mapping |
+| 4 | **Pi Agent** — Sessions | JSONL | `~/.pi/agent/sessions/.../<timestamp>_<id>.jsonl` | Compaction summaries, model changes, tool calls |
+| 5 | **Antigravity** — Conversations | Protobuf (`.pb`) | `~/.gemini/antigravity/conversations/<id>.pb` | Binary, opaque without proto schema |
+| 6 | **Antigravity** — Artifacts / Exports | MD + JSON | `~/.gemini/antigravity/brain/<id>/` & MD Exports | Implementation plans, tasks, raw markdown exports |
+| 7 | **ChatGPT** — Browser Export | JSON | User-exported `.json` files | Simple `{title, messages[{id, author, content}]}` |
+| 8 | **Gemini** — Browser Export | JSON | User-exported `.json` files | Same schema as ChatGPT exports (via same exporter) |
 
 ---
 
-## 1. Prompt History — `~/.claude/history.jsonl`
+### Design Goals
 
-A flat append-only log of every user prompt submitted across all sessions and projects. Used by `claude --resume` for the interactive session picker.
+1. **Normalize** all sources into one queryable structure
+2. **Preserve provenance** — always know which source/file/line produced a finding
+3. **Enable pattern matching** for:
+   - **Secrets**: API keys, tokens, passwords, connection strings, certificates
+   - **Slopquatting**: Hallucinated package names, fabricated CLI tools, invented APIs/roles
+   - **Company/Customer PII**: Names, emails, domains, internal project names, portfolio numbers, client identifiers
 
-### Schema
+---
+
+### Unified Data Model
+
+#### Core Entity: `Conversation`
 
 ```typescript
-interface PromptHistoryEntry {
-  display: string;            // The raw user input text
-  pastedContents: Record<     // Pasted clipboard content (empty object when none)
-    string,                   // Numeric key (e.g. "1")
-    {
-      id: number;
-      type: "text";
-      content?: string;       // Full text if small enough
-      contentHash?: string;   // Hash reference if content was large
-    }
-  >;
-  timestamp: number;          // Unix epoch in milliseconds
-  project: string;            // Absolute path of the working directory
-  sessionId: string;          // UUID v4 linking to conversation JSONL
+interface Conversation {
+  id: string;                          // Normalized UUID or provider-specific ID
+  provider: Provider;                  // Source system
+  title: string | null;                // Human-readable title (if available)
+  slug: string | null;                 // Machine-readable name (Claude Code slugs)
+  
+  // Time range
+  startedAt: string;                   // ISO 8601
+  endedAt: string | null;             // ISO 8601 (null if still active)
+  
+  // Context
+  project: ProjectContext | null;      // What codebase/directory was active
+  
+  // Content
+  messages: Message[];                 // Ordered conversation turns
+  toolInvocations: ToolInvocation[];   // Extracted tool calls (flattened for analysis)
+  artifacts: Artifact[];               // Plans, tasks, generated files
+  
+  // Ingestion metadata
+  source: SourceInfo;                  // Where this data came from
+}
+
+enum Provider {
+  CLAUDE_CODE    = "claude_code",
+  PI_AGENT       = "pi_agent",
+  ANTIGRAVITY    = "antigravity",
+  CHATGPT        = "chatgpt",
+  GEMINI         = "gemini",
 }
 ```
 
-### Example
+#### `Message` — The core unit of analysis
 
-```json
-{
-  "display": "fix the login bug on the /auth route",
-  "pastedContents": {},
-  "timestamp": 1775598381872,
-  "project": "/home/lars",
-  "sessionId": "cd429ed0-f563-4946-a6c6-e7925d52fee9"
+```typescript
+interface Message {
+  id: string;                          // Unique message ID
+  conversationId: string;              // Back-reference
+  parentId: string | null;             // Conversation tree linking
+  
+  role: Role;                          // Who produced this message
+  timestamp: string;                   // ISO 8601
+  
+  // Content (the text that gets scanned)
+  textContent: string;                 // Plain text (thinking + response merged)
+  thinkingContent: string | null;      // Extended thinking / chain-of-thought (separate for analysis)
+  rawContent: any;                     // Original provider-specific content blocks
+  
+  // Metadata for context-aware analysis
+  model: string | null;                // e.g. "claude-opus-4-6", "gpt-4o"
+  stopReason: string | null;           // "end_turn", "tool_use", "max_tokens"
+  tokenUsage: TokenUsage | null;       // Cost/usage tracking
+  
+  // Pre-extracted signals (populated during ingestion)
+  containsCode: boolean;               // Whether message contains code blocks
+  codeBlocks: CodeBlock[];             // Extracted code snippets
+  mentionedFiles: string[];            // File paths mentioned or accessed
+  mentionedUrls: string[];             // URLs mentioned
+  mentionedPackages: string[];         // Package/library names mentioned
+}
+
+enum Role {
+  USER      = "user",
+  ASSISTANT = "assistant",
+  SYSTEM    = "system",
+  TOOL      = "tool",                  // Tool results / outputs
 }
 ```
 
-### Notes
-- 349 of 3,200 entries (10.9%) have non-empty `pastedContents`
-- 339 unique sessions across 19 unique project paths
-- Timestamps are JavaScript `Date.now()` (ms since epoch)
+#### `ToolInvocation` — Flattened for security scanning
+
+```typescript
+interface ToolInvocation {
+  id: string;                          // Tool use ID
+  messageId: string;                   // Which message triggered this
+  conversationId: string;              // Back-reference
+  timestamp: string;                   // ISO 8601
+  
+  toolName: string;                    // Normalized: "bash", "file_edit", "file_read", 
+                                       // "file_write", "web_search", "browser", etc.
+  rawToolName: string;                 // Provider-specific: "Bash", "Edit", "Read", 
+                                       // "Write", "toolCall", etc.
+  
+  // Input (what was requested)
+  input: Record<string, any>;          // Tool-specific parameters
+  inputText: string;                   // Flattened text representation for scanning
+  
+  // Output (what was returned)  
+  output: string | null;               // Tool result text
+  isError: boolean;                    // Whether the tool errored
+  
+  // Security-relevant extracted fields
+  commandsRun: string[];               // Shell commands (from bash/terminal tools)
+  filesAccessed: string[];             // File paths read/written/edited
+  urlsAccessed: string[];              // URLs fetched
+  packagesReferenced: string[];        // npm/pip/cargo packages mentioned
+}
+```
+
+#### Auxiliary Entities
+
+```typescript
+interface ProjectContext {
+  workingDirectory: string;            // Absolute path (e.g. "/home/lars/Developer/PAI")
+  gitBranch: string | null;            // Current git branch
+  projectSlug: string | null;          // Claude Code style slug
+  repositoryName: string | null;       // Inferred repo name
+}
+
+interface CodeBlock {
+  language: string | null;             // "python", "powershell", "rust", "bash", etc.
+  content: string;                     // The actual code
+  messageId: string;                   // Which message contains this
+  role: Role;                          // Who wrote this code (user or assistant)
+}
+
+interface Artifact {
+  conversationId: string;
+  fileName: string;                    // e.g. "implementation_plan.md"
+  artifactType: string;                // "implementation_plan", "task", "walkthrough", "other"
+  content: string;                     // Full text content
+  summary: string | null;              // From metadata.json
+  updatedAt: string;                   // ISO 8601
+  versions: number;                    // Number of resolved versions
+}
+
+interface SourceInfo {
+  filePath: string;                    // Absolute path to source file
+  fileFormat: "jsonl" | "json" | "protobuf" | "markdown";
+  exporterVersion: string | null;      // e.g. "3.1.0" for ChatGPT exporter
+  ingestedAt: string;                  // ISO 8601 — when we processed this
+  lineRange: [number, number] | null;  // Line range in source file (for JSONL)
+}
+
+interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number | null;
+  cacheReadTokens: number | null;
+}
+```
 
 ---
 
-## 2. Conversations — `~/.claude/projects/<slug>/<session-id>.jsonl`
+### Analysis-Oriented Views
+
+#### View 1: `SecretCandidate` — For leaked secrets detection
+
+```typescript
+interface SecretCandidate {
+  conversationId: string;
+  messageId: string;
+  role: Role;                          // USER = user leaked it; ASSISTANT = AI hallucinated/echoed it
+  provider: Provider;
+  timestamp: string;
+  
+  matchType: SecretType;
+  matchValue: string;                  // The actual matched string
+  matchContext: string;                // Surrounding text (±200 chars)
+  confidence: number;                  // 0.0–1.0
+  
+  // Where in the conversation
+  sourceField: string;                 // "textContent", "thinkingContent", "toolInput", "toolOutput", "codeBlock"
+  codeLanguage: string | null;         // If found in a code block
+}
+
+enum SecretType {
+  API_KEY              = "api_key",
+  ACCESS_TOKEN         = "access_token",
+  PASSWORD             = "password",
+  CONNECTION_STRING    = "connection_string",
+  PRIVATE_KEY          = "private_key",
+  CERTIFICATE          = "certificate",
+  WEBHOOK_URL          = "webhook_url",
+  CLIENT_SECRET        = "client_secret",
+  TENANT_ID            = "tenant_id",
+  ENVIRONMENT_VARIABLE = "env_variable",
+}
+```
+
+#### View 2: `SlopquatCandidate` — For slopquatting detection
+
+```typescript
+interface SlopquatCandidate {
+  conversationId: string;
+  messageId: string;
+  provider: Provider;
+  timestamp: string;
+  
+  packageName: string;                 // The hallucinated package name
+  ecosystem: PackageEcosystem;         // npm, pypi, crates.io, etc.
+  
+  // Evidence
+  suggestedByAI: boolean;             // Was this in an assistant message?
+  existsInRegistry: boolean | null;    // Result of registry lookup (null = not checked)
+  similarRealPackages: string[];       // Typosquat candidates
+  
+  context: string;                     // Surrounding text showing usage
+  installCommand: string | null;       // e.g. "pip install fake-package"
+  
+  // Additional hallucination signals
+  fabricatedApiEndpoint: string | null;   // Non-existent API URL
+  fabricatedCliTool: string | null;       // Non-existent CLI command
+  fabricatedRole: string | null;          // Non-existent RBAC role (e.g. "Mailbox.AccessAsApp")
+}
+
+enum PackageEcosystem {
+  NPM        = "npm",
+  PYPI       = "pypi",
+  CRATES_IO  = "crates_io",
+  NUGET      = "nuget",
+  GO         = "go",
+  MAVEN      = "maven",
+}
+```
+
+> **Note on Slopquatting**: The exported ChatGPT conversation "App Zugriff auf Postfach" contains several examples of the AI fabricating PowerShell roles and parameters (e.g. `Mailbox.AccessAsApp`, `ApplicationMail.Read`, `-CustomRecipientScope`). This represents high-value training/verification data for detection heuristics.
+
+#### View 3: `PIICandidate` — For company/customer information detection
+
+```typescript
+interface PIICandidate {
+  conversationId: string;
+  messageId: string;
+  role: Role;
+  provider: Provider;
+  timestamp: string;
+  
+  piiType: PIIType;
+  matchValue: string;
+  matchContext: string;
+  confidence: number;
+  
+  // Categorization
+  isInternal: boolean;                 // Company-internal info vs customer data
+  dataSubject: string | null;          // "employee", "customer", "advisor", "system"
+}
+
+enum PIIType {
+  EMAIL_ADDRESS        = "email",
+  PERSON_NAME          = "person_name",
+  COMPANY_NAME         = "company_name",
+  DOMAIN_NAME          = "domain",
+  IP_ADDRESS           = "ip_address",
+  PORTFOLIO_NUMBER     = "portfolio_number",
+  CLIENT_IDENTIFIER    = "client_id",
+  INTERNAL_PATH        = "internal_path",
+  INTERNAL_URL         = "internal_url",
+  PROJECT_NAME         = "project_name",
+  PHONE_NUMBER         = "phone_number",
+  ADDRESS              = "physical_address",
+}
+```
+
+---
+
+## Part 2: Raw Provider Schema Specifications & Ingestion Notes
+
+### 1. Claude Code — `~/.claude/projects/<slug>/<session-id>.jsonl`
 
 Full conversation transcripts. Each line is a typed event. The slug is the project path with `/` replaced by `-` (e.g. `-home-lars-Developer-PAI`).
 
-### File Naming
+#### Unified Model Mapping
+| Claude Code Field | Maps To | Notes |
+|---|---|---|
+| `type: "user"` → `message.content` | `Message.textContent` | String or ContentBlock array |
+| `type: "assistant"` → `message.content` | `Message.textContent` + `thinkingContent` | Split thinking blocks from text/tool_use blocks |
+| `type: "assistant"` → tool_use blocks | `ToolInvocation` | Extract tool name, input, and link to result via `tool_use_id` |
+| `type: "user"` with `toolUseResult` | `ToolInvocation.output` | Match via `tool_use_id` |
+| `cwd`, `gitBranch` | `ProjectContext` | Available on every event |
+| `type: "file-history-snapshot"` | `ToolInvocation` (type: file_snapshot) | Track which files were modified |
+| `permissionMode: "bypassPermissions"` | `Message` metadata flag | ⚠️ Security-relevant: user disabled safety checks |
 
-```
-~/.claude/projects/-home-lars/cd429ed0-f563-4946-a6c6-e7925d52fee9.jsonl
-                   ^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                   project slug           session UUID
-```
+#### Event Types
+| Type | Subtype | Description |
+|---|---|---|
+| `permission-mode` | — | Permission mode set/changed |
+| `system` | `local_command` | Slash command invocation + output |
+| `user` | — | User prompt or tool result |
+| `attachment` | — | Companion/plugin attachment metadata |
+| `assistant` | — | Model response (text, thinking, tool calls) |
+| `file-history-snapshot` | — | File state checkpoint for undo |
+| `queue-operation` | — | Message queue (enqueue/dequeue during interrupts) |
+| `system` | `stop_hook_summary` | Post-response hook execution results |
+| `system` | `turn_duration` | Turn timing metadata |
+| `last-prompt` | — | Final prompt text (session footer) |
 
-Some sessions also have a **directory** with the same UUID (for file-history backups):
-```
-~/.claude/projects/-home-lars/034e9d3e-5333-4e96-acc9-80669f6ec655/
-~/.claude/projects/-home-lars/034e9d3e-5333-4e96-acc9-80669f6ec655.jsonl
-```
+*The raw events form a linked list/tree via `parentUuid` → `uuid` fields.*
 
-### Event Types
+---
 
-| Type | Subtype | Count¹ | Description |
+### 2. Pi Agent Sessions — `~/.pi/agent/sessions/--home-lars--/`
+
+Pi uses a JSONL format with short IDs and a different event taxonomy. Filename template: `<iso-timestamp>_<session-uuid>.jsonl`.
+
+#### Unified Model Mapping
+| Pi Agent Field | Maps To | Notes |
+|---|---|---|
+| `type: "message"`, `role: "user"` | `Message` (role: USER) | |
+| `type: "message"`, `role: "assistant"` | `Message` (role: ASSISTANT) | Split thinking/text/toolCall blocks |
+| `type: "message"`, `role: "toolResult"` | `ToolInvocation.output` | May contain base64 images |
+| `type: "compaction"` → `summary` | Separate `Message` (role: SYSTEM) | Contains summarized context — **may still reference secrets** |
+| `type: "compaction"` → `details.readFiles` | `ToolInvocation.filesAccessed` | Track which files were in context |
+| `type: "custom"`, `customType: "web-search-results"` | `ToolInvocation` (type: web_search) | |
+
+#### Event Types
+| Type | Description |
+|---|---|
+| `session` | Session initialization (version, cwd) |
+| `model_change` | Model selection event |
+| `thinking_level_change` | Thinking level configuration |
+| `message` | All conversation messages (user, assistant, toolResult) |
+| `compaction` | Context window compression events |
+| `custom` | Extension-specific events (e.g. web search results) |
+
+---
+
+### 3. ChatGPT & Gemini Browser Exports 
+
+Both use the same generic exporter (version 3.1.0 JSON format). 
+
+#### Unified Model Mapping
+| Export Field | Maps To | Notes |
+|---|---|---|
+| `title` | `Conversation.title` | |
+| `author: "user"` / `author: "ai"` | `Message.role` | Map "ai" → ASSISTANT (and "gemini", "chatgpt" → ASSISTANT logically) |
+| `content` | `Message.textContent` | Single string, no structured blocks |
+| `url` | `Conversation.source` | Original conversation URL |
+| `exporter` version | `SourceInfo.exporterVersion` | |
+
+> **Note**: ChatGPT/Gemini exports contain **no tool call structure** — everything is flattened into text content. Code blocks must be extracted via regex/parsing from the markdown content within the `content` string.
+
+---
+
+### 4. Antigravity Conversations
+
+Antigravity operates with local directories containing `.pb` (Protocol Buffer) logs and `.md`/`.json` artifact files.
+
+#### Unified Model Mapping
+| Antigravity Data | Maps To | Notes |
+|---|---|---|
+| `.pb` files in `conversations/` | `Conversation` | ⚠️ Binary protobuf — need proto schema to decode |
+| `brain/<id>/*.md` | `Artifact` | Implementation plans, tasks |
+| `brain/<id>/*.metadata.json` | `Artifact.summary`, `Artifact.updatedAt` | |
+| `brain/<id>/*.resolved.*` | `Artifact` version history | Multiple resolved versions |
+| Exported `.md` chat logs | `Conversation` + `Message[]` | Markdown format with "User Input" / "Planner Response" sections |
+
+> **Note on Antigravity `.pb` Logs**: The `.pb` files track extensive telemetry but are opaque without the appropriate protobuf schema. Standard data recovery may need to rely on the exported `.md` log files which are often stripped of codebase snippets, making the `brain/` artifact files and any available original source files critical for a full contextual security scan.
+
+---
+
+### Cross-Reference: Key Differences between Engine APIs (Claude vs Pi vs Export)
+
+| Aspect | Claude Code | Pi Agent | Raw Text Exports (ChatGPT/Gemini/Antigravity MD) |
 |---|---|---|---|
-| `permission-mode` | — | 2 | Permission mode set/changed |
-| `system` | `local_command` | 4 | Slash command invocation + output |
-| `user` | — | 258 | User prompt or tool result |
-| `attachment` | — | 1 | Companion/plugin attachment metadata |
-| `assistant` | — | 352 | Model response (text, thinking, tool calls) |
-| `file-history-snapshot` | — | 54 | File state checkpoint for undo |
-| `queue-operation` | — | 4 | Message queue (enqueue/dequeue during interrupts) |
-| `system` | `stop_hook_summary` | 31 | Post-response hook execution results |
-| `system` | `turn_duration` | 16 | Turn timing metadata |
-| `last-prompt` | — | 1 | Final prompt text (session footer) |
-
-¹ Counts from session `cd429ed0` (1.9 MB, 258 user turns)
-
-### Common Fields (all event types)
-
-```typescript
-interface BaseEvent {
-  type: string;               // Event type discriminator
-  uuid: string;               // Unique event ID (UUID v4)
-  parentUuid: string | null;  // Links to preceding event (conversation tree)
-  sessionId: string;          // Session UUID
-  timestamp: string;          // ISO 8601 datetime
-  isSidechain: boolean;       // Whether this is a branched/sidechain message
-  cwd: string;                // Working directory at time of event
-  entrypoint: string;         // "cli" | "ide" | etc.
-  version: string;            // Claude Code version (e.g. "2.1.92")
-  gitBranch: string;          // Current git branch (e.g. "HEAD", "main")
-  userType: string;           // "external" (human) | "internal" (subagent)
-}
-```
-
-### `type: "user"` — User Message
-
-```typescript
-interface UserEvent extends BaseEvent {
-  type: "user";
-  message: {
-    role: "user";
-    content: string | ContentBlock[];  // String for direct prompts, array for tool results
-  };
-  promptId: string;           // Unique prompt identifier
-  permissionMode: string;     // "default" | "bypassPermissions" | "acceptEdits" | etc.
-  slug?: string;              // Human-readable session name (e.g. "vivid-juggling-pie")
-  sourceToolAssistantUUID?: string;  // If this is a tool result, links to the assistant turn
-  toolUseResult?: string | {         // Tool result metadata
-    content: string;
-    is_error: boolean;
-    tool_use_id: string;
-    type: "tool_result";
-  };
-}
-```
-
-**User content when array (tool results):**
-
-```typescript
-type UserContentBlock =
-  | { type: "text"; text: string }              // Interrupt text or annotations
-  | { type: "tool_result";                      // Tool execution result
-      tool_use_id: string;
-      content: string;
-      is_error: boolean;
-    };
-```
-
-### `type: "assistant"` — Model Response
-
-```typescript
-interface AssistantEvent extends BaseEvent {
-  type: "assistant";
-  slug: string;               // Session slug
-  message: {
-    model: string;            // e.g. "claude-opus-4-6"
-    id: string;               // API message ID (e.g. "msg_bdrk_014Qi...")
-    type: "message";
-    role: "assistant";
-    content: AssistantContentBlock[];
-    stop_reason: string;      // "end_turn" | "tool_use" | "max_tokens"
-    stop_sequence: string | null;
-    usage: {
-      input_tokens: number;
-      output_tokens: number;
-      cache_creation_input_tokens: number;
-      cache_read_input_tokens: number;
-      server_tool_use?: object;
-    };
-  };
-}
-```
-
-**Assistant content blocks:**
-
-```typescript
-type AssistantContentBlock =
-  | { type: "thinking";                         // Extended thinking
-      thinking: string;
-      signature: string;                        // Cryptographic signature
-    }
-  | { type: "text";                             // Response text
-      text: string;
-    }
-  | { type: "tool_use";                         // Tool invocation
-      id: string;                               // Tool use ID (matches tool_result)
-      name: string;                             // "Bash" | "Edit" | "Read" | "Write" | "Glob" | etc.
-      input: Record<string, any>;               // Tool-specific parameters
-    };
-```
-
-### `type: "file-history-snapshot"` — File Undo Checkpoint
-
-```typescript
-interface FileHistorySnapshot {
-  type: "file-history-snapshot";
-  messageId: string;          // Links to the user/assistant event that triggered it
-  isSnapshotUpdate: boolean;  // Whether this updates an existing snapshot
-  snapshot: {
-    messageId: string;
-    timestamp: string;
-    trackedFileBackups: Record<
-      string,                 // Relative file path (e.g. ".pi/.gitignore")
-      {
-        backupFileName: string;  // Hash-based backup filename
-        version: number;
-        backupTime: string;
-      }
-    >;
-  };
-}
-```
-
-### `type: "system", subtype: "stop_hook_summary"` — Hook Execution
-
-```typescript
-interface StopHookSummary extends BaseEvent {
-  type: "system";
-  subtype: "stop_hook_summary";
-  level: string;              // "suggestion" | "info"
-  hasOutput: boolean;
-  hookCount: number;          // Number of hooks executed
-  hookErrors: any[];
-  hookInfos: Array<{
-    command: string;          // Hook script path
-    durationMs: number;
-  }>;
-  preventedContinuation: boolean;
-  stopReason: string;
-  toolUseID: string;
-  slug: string;
-}
-```
-
-### `type: "system", subtype: "turn_duration"` — Turn Metrics
-
-```typescript
-interface TurnDuration extends BaseEvent {
-  type: "system";
-  subtype: "turn_duration";
-  durationMs: number;         // Total turn time in milliseconds
-  messageCount: number;       // Messages in this turn
-  isMeta: boolean;
-  slug: string;
-}
-```
-
-### `type: "permission-mode"` — Permission Change
-
-```typescript
-interface PermissionMode {
-  type: "permission-mode";
-  permissionMode: string;     // "default" | "bypassPermissions" | etc.
-  sessionId: string;
-}
-```
-
-### `type: "queue-operation"` — Message Queue
-
-```typescript
-interface QueueOperation {
-  type: "queue-operation";
-  operation: string;          // "enqueue" | "dequeue"
-  content: string;            // The queued message text
-  sessionId: string;
-  timestamp: string;
-}
-```
-
-### `type: "last-prompt"` — Session Footer
-
-```typescript
-interface LastPrompt {
-  type: "last-prompt";
-  lastPrompt: string;         // Text of the final user prompt
-  sessionId: string;
-}
-```
-
-### Conversation Tree Structure
-
-Events form a **linked list / tree** via `parentUuid` → `uuid`:
-
-```
-permission-mode (root, parentUuid: null)
-  └─ system:local_command (slash command)
-       └─ system:local_command (output)
-            └─ user (first prompt)
-                 └─ attachment (companion intro)
-                      └─ assistant (model response with tool_use)
-                           └─ file-history-snapshot
-                           └─ user (tool_result array)
-                                └─ assistant (continues...)
-                                     └─ system:stop_hook_summary
-                                          └─ system:turn_duration
-```
-
----
-
-## 3. Session Registry — `~/.claude/sessions/<pid>.json`
-
-Lightweight metadata indexed by OS process ID. Used to map running processes to sessions.
-
-### Schema
-
-```typescript
-interface SessionRegistry {
-  pid: number;                // OS process ID
-  sessionId: string;          // UUID v4 linking to conversation JSONL
-  cwd: string;                // Working directory
-  startedAt: number;          // Unix epoch in milliseconds
-  kind: string;               // "interactive" (always observed)
-  entrypoint: string;         // "cli" (always observed)
-}
-```
-
-### Example
-
-```json
-{
-  "pid": 6783,
-  "sessionId": "2b84b6c1-bd63-4b7e-bb07-36281d452218",
-  "cwd": "/home/lars",
-  "startedAt": 1775661877651,
-  "kind": "interactive",
-  "entrypoint": "cli"
-}
-```
-
-### Notes
-- Files are **not cleaned up** when processes exit (55 files, many for dead PIDs)
-- Filename is the PID, not the session ID
-
----
-
-## 4. Pi Agent Sessions — `~/.pi/agent/sessions/--home-lars--/`
-
-Pi uses a different JSONL format with shorter IDs and a different event taxonomy.
-
-### File Naming
-
-```
-2026-04-02T07-54-25-828Z_1881fd53-9722-4357-9b9b-2c8b00486495.jsonl
-^^^^^^^^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ISO 8601 timestamp (- for :)               session UUID
-```
-
-### Event Types
-
-| Type | Count¹ | Description |
-|---|---|---|
-| `session` | 1 | Session initialization (version, cwd) |
-| `model_change` | 1 | Model selection event |
-| `thinking_level_change` | 1 | Thinking level configuration |
-| `message` | 69 | All conversation messages (user, assistant, toolResult) |
-| `compaction` | 5 | Context window compression events |
-| `custom` | 3 | Extension-specific events (e.g. web search results) |
-
-¹ Counts from session `1881fd53` (1,062 KB, largest session)
-
-### Common Fields
-
-```typescript
-interface PiBaseEvent {
-  type: string;               // Event type discriminator
-  id: string;                 // Short hex ID (8 chars, e.g. "6580b300")
-  parentId: string | null;    // Links to preceding event
-  timestamp: string;          // ISO 8601 datetime
-}
-```
-
-### `type: "session"` — Session Init
-
-```typescript
-interface PiSession extends PiBaseEvent {
-  type: "session";
-  cwd: string;
-  version: number;            // Schema version (observed: 3)
-}
-```
-
-### `type: "model_change"` — Model Selection
-
-```typescript
-interface PiModelChange extends PiBaseEvent {
-  type: "model_change";
-  modelId: string;            // e.g. "claude-sonnet-4-6"
-  provider: string;           // e.g. "dt-llmchat"
-}
-```
-
-### `type: "thinking_level_change"`
-
-```typescript
-interface PiThinkingLevel extends PiBaseEvent {
-  type: "thinking_level_change";
-  thinkingLevel: string;      // "high" | "medium" | "low"
-}
-```
-
-### `type: "message"` — All Conversation Messages
-
-Pi wraps all roles in a single `message` type with role discrimination inside:
-
-```typescript
-interface PiMessage extends PiBaseEvent {
-  type: "message";
-  message: {
-    role: "user" | "assistant" | "toolResult";
-    content: PiContentBlock[];
-    timestamp?: number;       // Epoch ms (on user messages)
-  };
-}
-```
-
-**Content blocks by role:**
-
-```typescript
-// User messages
-type PiUserContent = { type: "text"; text: string };
-
-// Assistant messages
-type PiAssistantContent =
-  | { type: "thinking"; thinking: string; thinkingSignature: "reasoning_content" }
-  | { type: "text"; text: string }
-  | { type: "toolCall"; id: string; name: string; arguments: Record<string, any> };
-
-// Tool results
-type PiToolResultContent =
-  | { type: "text"; text: string }
-  | { type: "image"; data: string; mimeType: string };   // Base64 encoded
-```
-
-### `type: "compaction"` — Context Compression
-
-```typescript
-interface PiCompaction extends PiBaseEvent {
-  type: "compaction";
-  summary: string;            // Markdown summary of compacted context
-  tokensBefore: number;       // Token count before compaction
-  firstKeptEntryId: string;   // ID of first event kept after compaction
-  fromHook: boolean;          // Whether triggered by a hook
-  details: {
-    readFiles: string[];      // Files read during compacted portion
-    // ... additional metadata
-  };
-}
-```
-
-### `type: "custom"` — Extension Events
-
-```typescript
-interface PiCustomEvent extends PiBaseEvent {
-  type: "custom";
-  customType: string;         // e.g. "web-search-results"
-  data: Record<string, any>;  // Extension-specific payload
-}
-```
-
----
-
-## Cross-Reference: Claude Code vs Pi Agent
-
-| Aspect | Claude Code | Pi Agent |
-|---|---|---|
-| **ID format** | UUID v4 (36 chars) | Short hex (8 chars) |
-| **Event linking** | `parentUuid` → `uuid` | `parentId` → `id` |
-| **Message typing** | Separate `type: "user"` / `type: "assistant"` | Single `type: "message"` with `message.role` |
-| **Tool calls** | `type: "tool_use"` in content blocks | `type: "toolCall"` in content blocks |
-| **Tool results** | Separate `type: "user"` event with `tool_result` content | Separate `type: "message"` with `role: "toolResult"` |
-| **Thinking** | `signature` field (crypto) | `thinkingSignature: "reasoning_content"` |
-| **Context management** | Server-side (no local compaction events) | `type: "compaction"` with summary + token counts |
-| **File tracking** | `file-history-snapshot` events with backups | Not present |
-| **Hooks** | `stop_hook_summary` events | Not present |
-| **Metrics** | `turn_duration` events | Not present |
-| **Session metadata** | Separate `sessions/<pid>.json` registry | Inline `type: "session"` event |
-| **Slug naming** | `slug` field on events (e.g. "vivid-juggling-pie") | Not present |
-| **File naming** | `<session-uuid>.jsonl` | `<iso-timestamp>_<session-uuid>.jsonl` |
-
----
-
-## Access Methods
-
-### Claude Code
-
-```bash
-# Resume interactively (fuzzy search)
-claude --resume
-
-# Resume specific session
-claude --resume cd429ed0-f563-4946-a6c6-e7925d52fee9
-
-# Continue most recent in current directory
-claude --continue
-
-# Fork a session (new ID, same history)
-claude --resume <id> --fork-session
-
-# Extract all user prompts from a session
-python3 -c "
-import json
-with open('$HOME/.claude/projects/-home-lars/<session-id>.jsonl') as f:
-    for line in f:
-        obj = json.loads(line)
-        if obj.get('type') == 'user':
-            msg = obj['message']['content']
-            if isinstance(msg, str):
-                print(f'[{obj[\"timestamp\"]}] {msg[:120]}')
-"
-```
-
-### Pi Agent
-
-```bash
-# Resume last session
-pi --resume
-
-# Sessions are in chronologically-named files
-ls ~/.pi/agent/sessions/--home-lars--/
-```
+| **ID format** | UUID v4 (36 chars) | Short hex (8 chars) | Usually sequential `user-1` / `ai-1` or implicit |
+| **Event linking** | `parentUuid` → `uuid` | `parentId` → `id` | None/List Order |
+| **Message typing** | Separate `type: "user"` / `assistant` | Single `type: "message"` with `role` | Flattened inside a single JSON `messages` array |
+| **Tool calls** | `tool_use` in content blocks | `toolCall` in content blocks | Stripped or present only as descriptive text |
+| **Tool results** | Separate `type: "user"` with `tool_result` | Separate `role: "toolResult"` | Usually omitted or folded into text context |
+| **Thinking** | `signature` field (crypto) | `thinkingSignature` | Included directly in text or omitted entirely |
+| **Session meta** | `sessions/<pid>.json` registry | Inline `type: "session"` event | In JSON root metadata |

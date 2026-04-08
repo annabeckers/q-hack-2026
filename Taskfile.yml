@@ -71,6 +71,11 @@ tasks:
     cmds:
       - uv run alembic revision --autogenerate -m "{{.CLI_ARGS}}"
 
+  postgres-setup:
+    desc: Apply PostgreSQL schema script via Docker
+    cmds:
+      - docker compose exec -T postgres psql -U postgres -d hackathon -f /docker-entrypoint-initdb.d/001_init_schema.sql
+
   # ── Frontend ────────────────────────────────────
   frontend:
     desc: Run frontend in dev mode
@@ -131,11 +136,11 @@ tasks:
       - helm upgrade hackathon ./src/infra/k8s/hackathon {{.CLI_ARGS}}
 
   # ── Data ──────────────────────────────────────
-  seed:
+  seed-database:
     desc: Seed database with demo data
     dir: "{{.BACKEND_DIR}}"
     cmds:
-      - uv run python scripts/seed.py
+      - uv run python scripts/seed_database.py
 
   # ── Edge Deploys ──────────────────────────────
   deploy-vercel:
