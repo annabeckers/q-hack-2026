@@ -75,11 +75,17 @@ def parse_timestamp(value: Any) -> datetime | None:
 
 
 def clean_user_text(raw: str) -> str:
-    cleaned = raw.strip()
+    if not isinstance(raw, str):
+        raw = str(raw)
+    # Remove null bytes which cause UTF-8 encoding issues - do this first
+    cleaned = raw.replace("\x00", "")
+    cleaned = cleaned.strip()
     cleaned = URL_RE.sub("[REDACTED_URL]", cleaned)
     cleaned = EMAIL_RE.sub("[REDACTED_EMAIL]", cleaned)
     cleaned = SECRET_RE.sub("[REDACTED_SECRET]", cleaned)
     cleaned = WHITESPACE_RE.sub(" ", cleaned)
+    # Final pass to remove any remaining null bytes
+    cleaned = cleaned.replace("\x00", "")
     return cleaned
 
 
@@ -107,26 +113,26 @@ def normalize_author(role_value: Any) -> str | None:
 
 def extract_text_from_content(content: Any) -> str:
     if isinstance(content, str):
-        return content
+        return content.replace("\x00", "")
     if isinstance(content, dict):
         for key in ("text", "content", "prompt", "message"):
             value = content.get(key)
             if isinstance(value, str):
-                return value
+                return value.replace("\x00", "")
         return ""
     if isinstance(content, list):
         parts: list[str] = []
         for block in content:
             if isinstance(block, str):
-                parts.append(block)
+                parts.append(block.replace("\x00", ""))
                 continue
             if not isinstance(block, dict):
                 continue
             block_type = str(block.get("type", "")).lower()
             if block_type in {"text", "input_text", "user_text"} and isinstance(block.get("text"), str):
-                parts.append(block["text"])
+                parts.append(block["text"].replace("\x00", ""))
             elif isinstance(block.get("content"), str):
-                parts.append(block["content"])
+                parts.append(block["content"].replace("\x00", ""))
         return "\n".join(p for p in parts if p.strip())
     return ""
 
@@ -151,9 +157,20 @@ def build_row(
     user_text: str,
     metadata: dict[str, Any],
 ) -> ChatRow:
+    # Clean null bytes from raw user_text first
+    user_text = user_text.replace("\x00", "")
     user_text_clean = clean_user_text(user_text)
     user_text_hash = hashlib.sha256(user_text_clean.encode("utf-8")).hexdigest()
-    metadata_json = json.dumps(metadata, ensure_ascii=True)
+    
+    # Clean metadata values to remove null bytes before JSON serialization
+    cleaned_metadata = {}
+    for k, v in metadata.items():
+        if isinstance(v, str):
+            cleaned_metadata[k] = v.replace("\x00", "")
+        else:
+            cleaned_metadata[k] = v
+    
+    metadata_json = json.dumps(cleaned_metadata, ensure_ascii=True)
 
     return ChatRow(
         source_file=source_file,

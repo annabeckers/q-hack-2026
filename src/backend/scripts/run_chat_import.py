@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from pathlib import Path
+
+# Add parent directory to Python path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.application.services.chat_import import import_chat_exports
 
