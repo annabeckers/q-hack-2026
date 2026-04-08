@@ -14,27 +14,6 @@ tool_registry.register(tags=["database", "graph"])(query_graph)
 tool_registry.register(tags=["database", "sql"])(search_postgres)
 
 
-@tool_registry.register(tags=["data", "analytics"])
-def query_duckdb(sql: str) -> str:
-    """Execute an analytical SQL query against DuckDB.
-
-    DuckDB can query CSV/Parquet/JSON files directly without importing.
-    Example: SELECT * FROM read_csv('resources/data/sales.csv') LIMIT 10
-
-    Args:
-        sql: The SQL query to execute.
-    """
-    import json
-    from app.infrastructure.duckdb_store import DuckDBStore
-
-    store = DuckDBStore()
-    try:
-        results = store.query(sql)
-        return json.dumps(results, default=str, indent=2)
-    finally:
-        store.close()
-
-
 @tool_registry.register(tags=["utility"])
 async def fetch_url(url: str) -> str:
     """Fetch content from a URL and return the text.

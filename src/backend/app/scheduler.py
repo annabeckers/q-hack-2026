@@ -32,9 +32,9 @@ async def cleanup_expired_sessions():
 
 
 async def refresh_analytics():
-    """Example cron job: refresh DuckDB materialized tables."""
+    """Example cron job: refresh PostgreSQL analytics tables."""
     log.info("cron_refresh_analytics", status="started")
-    # TODO: Re-run DuckDB queries to refresh insights tables
+    # TODO: Re-run PostgreSQL queries/materialized views to refresh insights
     log.info("cron_refresh_analytics", status="completed")
 
 
@@ -65,7 +65,7 @@ def create_scheduler() -> AsyncIOScheduler:
         refresh_analytics,
         trigger=IntervalTrigger(hours=1),
         id="refresh_analytics",
-        name="Refresh DuckDB analytics",
+        name="Refresh PostgreSQL analytics",
         replace_existing=True,
     )
 

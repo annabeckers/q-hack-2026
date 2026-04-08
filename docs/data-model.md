@@ -118,19 +118,10 @@ graph LR
 | `documents` | Ingested document chunks with embeddings | Dataloader |
 | `knowledge_base` | Domain-specific knowledge for RAG | Manual / API |
 
-## DuckDB Tables
+## PostgreSQL Analytics Tables
 
-DuckDB tables are created dynamically from file ingestion:
-
-```sql
--- Direct file queries (no import needed)
-SELECT * FROM read_csv('resources/data/dataset.csv');
-SELECT * FROM read_parquet('resources/data/*.parquet');
-SELECT * FROM read_json('resources/data/events.json');
-
--- Materialized tables
-CREATE TABLE insights AS SELECT ... FROM read_csv('...');
-```
+Analytics data is stored in PostgreSQL tables and views.
+Use materialized views for expensive aggregations and refresh them via scheduler jobs.
 
 ## Redis Keys
 

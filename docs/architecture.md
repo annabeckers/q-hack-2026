@@ -33,7 +33,7 @@
 |  Entities (dataclasses) |         | AWS Bedrock  | | ChromaDB     |
 |  Interfaces (ABC)       |         | OpenAI       | | Neo4j        |
 |  Business Rules         |         | Anthropic    | | Postgres     |
-|  NO framework imports   |         | Google       | | DuckDB       |
+|  NO framework imports   |         | Google       | | PostgreSQL   |
 +-------------------------+         +--------------+ +--------------+
             ^
             | map_imperatively()
@@ -42,18 +42,18 @@
 |                               |
 |  mapping.py (imperative map)  |
 |  Repositories (direct entity) |
-|  DuckDB store (analytics)     |
+|  PostgreSQL analytics views   |
 |  Data mapping (ETL pipeline)  |
 |  External service clients     |
 +------+------+---------+------+
        |      |         |
        v      v         v
-+------+-+  +-+------+  +--------+  +-------+  +-------+  +-------+
-|Postgres|  | Neo4j  |  |ChromaDB|  | Redis |  |DuckDB |  |SQLite |
-| :5432  |  | :7687  |  | :8100  |  | :6379 |  |embed  |  |  alt  |
-+--------+  +--------+  +--------+  +-------+  +-------+  +-------+
-  CRUD       Graphs      Vectors     Cache      Analytics   Light
-  primary    knowledge   RAG/search  sessions   OLAP/files  no-Docker
++------+-+  +-+------+  +--------+  +-------+
+|Postgres|  | Neo4j  |  |ChromaDB|  | Redis |
+| :5432  |  | :7687  |  | :8100  |  | :6379 |
++--------+  +--------+  +--------+  +-------+
+    CRUD       Graphs      Vectors     Cache
+    primary    knowledge   RAG/search  sessions
 ```
 
 ## Imperative Mapping (DDD Core)
@@ -141,7 +141,7 @@ flowchart TD
     I --> J{Tool Decision}
     J --> K[(ChromaDB)]
     J --> L[(Neo4j)]
-    J --> M[(Postgres / DuckDB)]
+    J --> M[(Postgres)]
     K --> N[LLM Synthesis]
     L --> N
     M --> N
@@ -181,7 +181,7 @@ flowchart TD
     E --> F[(PostgreSQL: records)]
     E --> G[(Neo4j: graph)]
     E --> H[(ChromaDB: vectors)]
-    E --> I[(DuckDB: analytics)]
+    E --> I[(PostgreSQL: analytics)]
 ```
 
 ### 5. Data Mapping Pipeline
@@ -218,7 +218,7 @@ flowchart TD
 
 Full schema definition with column details: see [docs/data-model.md](data-model.md).
 
-### PostgreSQL -- Primary CRUD (or SQLite as lightweight alt)
+### PostgreSQL -- Primary CRUD
 
 Tables defined via imperative mapping in `app/infrastructure/mapping.py`:
 
@@ -246,23 +246,10 @@ Populated by dataloader. Queried by agent tools for context retrieval.
 
 Keys: `session:{uid}`, `cache:{key}`, `ratelimit:{ip}`, `queue:{name}`.
 
-### DuckDB -- Embedded Analytics
+### PostgreSQL -- Analytics
 
-No server needed. Query files directly:
-```sql
-SELECT * FROM read_csv('resources/data/sales.csv');
-SELECT * FROM read_parquet('resources/data/*.parquet');
-```
-
-Materialized tables for dashboards. Export to Parquet for sharing.
-
-### SQLite -- Lightweight Alternative
-
-Swap PostgreSQL for SQLite with one env var change. Same SQLAlchemy code works (imperative mapping is dialect-agnostic). Good for: prototyping without Docker, single-file deployments, CI/CD testing.
-
-```
-DATABASE_URL=sqlite+aiosqlite:///./hackathon.db
-```
+Analytics workloads run in PostgreSQL using SQL queries and materialized views.
+Use scheduled refresh jobs for heavy reporting views.
 
 ## Observability Stack (Optional)
 

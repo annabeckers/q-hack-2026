@@ -36,8 +36,6 @@ src/frontend/dist/
 # Database
 *.db
 *.sqlite3
-*.duckdb
-*.duckdb.wal
 
 # Rust
 target/
