@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.application.services.chat_import import import_chat_exports
+from app.application.services.deterministic_analysis import default_deterministic_analysis_service
 
 
 async def main() -> None:
@@ -29,6 +30,11 @@ async def main() -> None:
     parser.add_argument("--claude-history", help="Path to Claude Code prompt history JSONL", default=None)
     parser.add_argument("--claude-projects-dir", help="Path to Claude Code projects directory", default=None)
     parser.add_argument("--pi-sessions-dir", help="Path to Pi Agent sessions directory", default=None)
+    parser.add_argument(
+        "--run-deterministic-analysis",
+        action="store_true",
+        help="Run deterministic company-data vs chat-data analysis after importing chats",
+    )
     args = parser.parse_args()
 
     base = Path(__file__).resolve().parent
@@ -48,6 +54,10 @@ async def main() -> None:
     print(f"Top files by message count: {stats.top_files}")
     if not args.dry_run:
         print(f"Inserted/updated rows in chats: {stats.inserted_or_updated}")
+        if args.run_deterministic_analysis:
+            analysis_stats = await default_deterministic_analysis_service.run()
+            print(f"Deterministic analysis run id: {analysis_stats['analysis_run_id']}")
+            print(f"Deterministic matches saved: {analysis_stats['match_count']}")
 
 
 if __name__ == "__main__":

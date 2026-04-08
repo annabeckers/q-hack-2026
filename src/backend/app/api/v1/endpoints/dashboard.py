@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from app.application.services.deterministic_analysis import default_deterministic_analysis_service
 from app.application.services.dashboard_service import default_dashboard_service
 from app.domain.dashboard import DashboardFilters
 
@@ -54,41 +55,52 @@ def _filters(
     )
 
 
+async def _ensure_deterministic_analysis() -> None:
+    await default_deterministic_analysis_service.ensure_completed()
+
+
 @router.get("/summary")
-def summary(time_range: str = Query("month"), department: str | None = None):
+async def summary(time_range: str = Query("month"), department: str | None = None):
+    await _ensure_deterministic_analysis()
     return default_dashboard_service.summary(time_range=time_range, department=department)
 
 
 @router.get("/summary/compliance-gauge")
-def compliance_gauge(department: str | None = None):
+async def compliance_gauge(department: str | None = None):
+    await _ensure_deterministic_analysis()
     return default_dashboard_service.compliance_score(DashboardFilters(department=department))
 
 
 @router.get("/analytics/cost")
-def cost_analytics(dimension: str = Query(...), cost_basis: str = Query("per_session"), limit: int = 20, startDate: str | None = None, endDate: str | None = None, department: str | None = None):
+async def cost_analytics(dimension: str = Query(...), cost_basis: str = Query("per_session"), limit: int = 20, startDate: str | None = None, endDate: str | None = None, department: str | None = None):
+    await _ensure_deterministic_analysis()
     if cost_basis != "per_session":
         raise HTTPException(status_code=400, detail="cost_basis must be per_session")
     return default_dashboard_service.cost_analytics(_filters(dimension=dimension, department=department, limit=limit, start_date=startDate, end_date=endDate))
 
 
 @router.get("/analytics/usage")
-def usage_analytics(dimension: str = Query(...), metric: str = Query("avgWordCountPerSession"), startDate: str | None = None, endDate: str | None = None, department: str | None = None):
+async def usage_analytics(dimension: str = Query(...), metric: str = Query("avgWordCountPerSession"), startDate: str | None = None, endDate: str | None = None, department: str | None = None):
+    await _ensure_deterministic_analysis()
     return default_dashboard_service.usage_analytics(_filters(dimension=dimension, metric=metric, department=department, start_date=startDate, end_date=endDate))
 
 
 @router.get("/analytics/model-comparison")
-def model_comparison(department: str | None = None):
+async def model_comparison(department: str | None = None):
+    await _ensure_deterministic_analysis()
     return default_dashboard_service.model_comparison(_filters(department=department))
 
 
 @router.get("/security/findings")
-def findings(type: str = Query("all"), severity: str = Query("all"), status: str = Query("open"), department: str | None = None, provider: str | None = None, limit: int = 100, offset: int = 0):
+async def findings(type: str = Query("all"), severity: str = Query("all"), status: str = Query("open"), department: str | None = None, provider: str | None = None, limit: int = 100, offset: int = 0):
+    await _ensure_deterministic_analysis()
     filters = _filters(category=None if type == "all" else type, severity=None if severity == "all" else severity, status=status, department=department, provider=provider, limit=limit, offset=offset)
     return default_dashboard_service.findings(filters)
 
 
 @router.get("/security/findings/{finding_id}")
-def finding_detail(finding_id: str):
+async def finding_detail(finding_id: str):
+    await _ensure_deterministic_analysis()
     finding = default_dashboard_service.finding_detail(finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
@@ -96,7 +108,8 @@ def finding_detail(finding_id: str):
 
 
 @router.patch("/security/findings/{finding_id}/remediation")
-def finding_remediation(finding_id: str, body: dict = Body(...)):
+async def finding_remediation(finding_id: str, body: dict = Body(...)):
+    await _ensure_deterministic_analysis()
     status = str(body.get("status") or "").strip()
     notes = body.get("notes")
     if status not in {"acknowledged", "resolved"}:
@@ -108,53 +121,64 @@ def finding_remediation(finding_id: str, body: dict = Body(...)):
 
 
 @router.get("/security/severity-distribution")
-def severity_distribution(department: str | None = None, provider: str | None = None):
+async def severity_distribution(department: str | None = None, provider: str | None = None):
+    await _ensure_deterministic_analysis()
     return default_dashboard_service.severity_distribution(_filters(department=department, provider=provider))
 
 
 @router.get("/security/leak-counts")
-def leak_counts(model: str | None = None, category: str | None = None, department: str | None = None):
+async def leak_counts(model: str | None = None, category: str | None = None, department: str | None = None):
+    await _ensure_deterministic_analysis()
     return default_dashboard_service.leak_counts(_filters(model=model, category=category, department=department))
 
 
 @router.get("/security/slopsquatting")
-def slopsquatting(dimension: str = Query("model"), sortBy: str = Query("count"), department: str | None = None):
+async def slopsquatting(dimension: str = Query("model"), sortBy: str = Query("count"), department: str | None = None):
+    await _ensure_deterministic_analysis()
     return default_dashboard_service.slopsquatting(_filters(dimension=dimension, sort_by=sortBy, department=department))
 
 
 @router.get("/security/duplicate-secrets")
-def duplicate_secrets(minUsers: int = 2, department: str | None = None):
+async def duplicate_secrets(minUsers: int = 2, department: str | None = None):
+    await _ensure_deterministic_analysis()
     findings = default_dashboard_service.duplicate_secrets(_filters(department=department))
     return [finding for finding in findings if finding["affectedUsers"] >= minUsers]
 
 
 @router.get("/trends/timeseries")
-def time_series(metric: str, granularity: str = Query("day"), department: str | None = None, startDate: str | None = None, endDate: str | None = None):
+async def time_series(metric: str, granularity: str = Query("day"), department: str | None = None, startDate: str | None = None, endDate: str | None = None):
+    await _ensure_deterministic_analysis()
     return default_dashboard_service.time_series(_filters(dimension=granularity, metric=metric, department=department, start_date=startDate, end_date=endDate))
 
 
 @router.get("/trends/anomalies")
-def anomalies(department: str | None = None, zscore: float = 2.0):
+async def anomalies(department: str | None = None, zscore: float = 2.0):
+    await _ensure_deterministic_analysis()
     return [alert for alert in default_dashboard_service.anomalies(_filters(department=department)) if abs(alert["zScore"]) >= zscore]
 
 
 @router.get("/trends/patterns-by-time")
-def patterns_by_time(department: str | None = None):
+async def patterns_by_time(department: str | None = None):
+    await _ensure_deterministic_analysis()
     return default_dashboard_service.patterns_by_time(_filters(department=department))
 
 
 @router.get("/trends/complexity-scatter")
-def complexity_scatter(department: str | None = None, provider: str | None = None):
+async def complexity_scatter(department: str | None = None, provider: str | None = None):
+    await _ensure_deterministic_analysis()
     return default_dashboard_service.complexity_scatter(_filters(department=department, provider=provider))
 
 
 @router.get("/alerts")
-def alerts(since: str | None = None, severity: str | None = None, type: str | None = None, limit: int = 50, department: str | None = None):
+async def alerts(since: str | None = None, severity: str | None = None, type: str | None = None, limit: int = 50, department: str | None = None):
+    await _ensure_deterministic_analysis()
     return default_dashboard_service.alerts(_filters(department=department, severity=severity, category=type, limit=limit))
 
 
 @router.get("/alerts/stream")
 async def alert_stream(severity: str | None = None):
+    await _ensure_deterministic_analysis()
+
     async def generator():
         for alert in default_dashboard_service.alerts(_filters(severity=severity, limit=50)):
             yield f"data: {json.dumps(alert, default=str)}\n\n"
@@ -164,7 +188,8 @@ async def alert_stream(severity: str | None = None):
 
 
 @router.post("/alerts/{finding_id}/acknowledge")
-def acknowledge_alert(finding_id: str, body: dict = Body(default_factory=dict)):
+async def acknowledge_alert(finding_id: str, body: dict = Body(default_factory=dict)):
+    await _ensure_deterministic_analysis()
     updated = default_dashboard_service.acknowledge_alert(finding_id, str(body.get("notes") or "") or None)
     if not updated:
         raise HTTPException(status_code=404, detail="Alert not found")

@@ -9,6 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from app.config import settings
 from app.domain.dashboard import ConversationMessage, ConversationRecord, FindingRecord, UsageRecord
 
 
@@ -21,33 +22,6 @@ SECRET_PATTERNS: dict[str, tuple[re.Pattern[str], str]] = {
     "webhook_url": (re.compile(r"https?://hooks\.[^\s]+", re.IGNORECASE), "medium"),
     "client_secret": (re.compile(r"(?i)\bclient[_-]?secret\b\s*[:=]\s*['\"]?([^\s'\"]{6,})"), "critical"),
     "tenant_id": (re.compile(r"(?i)\btenant[_-]?id\b\s*[:=]\s*['\"]?([0-9a-f-]{16,})"), "medium"),
-}
-
-PII_PATTERNS: dict[str, tuple[re.Pattern[str], str]] = {
-    "email": (re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE), "high"),
-    "ip_address": (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"), "high"),
-    "phone_number": (re.compile(r"\b(?:\+?\d{1,3}[\s-]?)?(?:\d[\s-]?){7,14}\b"), "medium"),
-    "internal_path": (re.compile(r"(?:[A-Za-z]:\\|/)[\w.\\/-]+"), "medium"),
-    "internal_url": (re.compile(r"https?://[\w.-]+(?:/[^\s]*)?", re.IGNORECASE), "medium"),
-}
-
-SLOPSQUAT_PATTERNS = [
-    re.compile(r"(?i)\b(?:pip|npm|yarn|pnpm|cargo|go|dotnet)\s+(?:install|add|get)\s+([A-Za-z0-9._-]{3,})"),
-    re.compile(r"\b[A-Z][A-Za-z0-9]+(?:\.[A-Za-z0-9]+)+\b"),
-    re.compile(r"(?i)\b(?:role|permission|scope|cmdlet|module)\b.*?([A-Za-z][A-Za-z0-9._-]{3,})"),
-]
-
-DEPARTMENT_KEYWORDS = {
-    "engineering": ["code", "debug", "test", "production", "deploy"],
-    "security": ["security", "rbac", "mailbox", "postfach"],
-    "finance": ["budget", "forecast", "invoice", "payment", "finance"],
-    "hr": ["employee", "onboarding", "cv", "bewerbung", "hr"],
-    "legal": ["contract", "vertrag", "legal"],
-    "sales": ["sales", "angebot", "lead"],
-    "support": ["support", "ticket"],
-    "marketing": ["marketing", "copy", "content"],
-    "product": ["roadmap", "product"],
-    "data": ["kpi", "report", "analysis"],
 }
 
 
@@ -161,20 +135,6 @@ def _normalize_family(name: str | None) -> str:
     return lower
 
 
-def _infer_department(text: str, fallback: str | None = None) -> str | None:
-    haystack = text.lower()
-    for department, keywords in DEPARTMENT_KEYWORDS.items():
-        if any(keyword in haystack for keyword in keywords):
-            return department
-    return fallback
-
-
-def _snippet(text: str, start: int, end: int, padding: int = 60) -> str:
-    left = max(0, start - padding)
-    right = min(len(text), end + padding)
-    return text[left:right].strip()
-
-
 def _hash_id(*parts: str) -> str:
     payload = "|".join(parts).encode("utf-8", errors="ignore")
     return hashlib.sha1(payload).hexdigest()[:16]
@@ -255,85 +215,81 @@ def _load_conversations(root: str) -> tuple[ConversationRecord, ...]:
     return tuple(records)
 
 
-@lru_cache(maxsize=1)
-def _load_findings(root: str) -> tuple[FindingRecord, ...]:
+
+
+def _load_persisted_findings() -> tuple[FindingRecord, ...] | None:
+    try:
+        import psycopg2
+
+        database_url = settings.database_url.replace("+asyncpg", "")
+        if not database_url.startswith("postgres"):
+            return None
+
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id FROM deterministic_analysis_runs
+                    ORDER BY completed_at DESC
+                    LIMIT 1
+                    """
+                )
+                latest_run = cur.fetchone()
+                if not latest_run:
+                    return None
+
+                cur.execute(
+                    """
+                    SELECT
+                        id, department, source_file, conversation_key, conversation_title, provider,
+                        model_name, message_id, message_timestamp, author, role, source_field,
+                        company_rule_id, company_label, company_category, company_source_table,
+                        company_source_field, matched_text, match_context, severity, confidence
+                    FROM deterministic_chat_matches
+                    WHERE analysis_run_id = %s
+                    ORDER BY conversation_key, message_timestamp NULLS LAST, message_id
+                    """,
+                    (latest_run[0],),
+                )
+                rows = cur.fetchall()
+    except Exception:
+        return None
+
+    if not rows:
+        return None
+
     findings: list[FindingRecord] = []
-    for conversation in _load_conversations(root):
-        department = _infer_department(conversation.title or conversation.conversation_id)
-        for message in conversation.messages:
-            text = message.content
-            role = "assistant" if message.author.lower() in {"assistant", "ai", "model", "bot"} else "user"
-
-            for category, (pattern, severity) in SECRET_PATTERNS.items():
-                for match in pattern.finditer(text):
-                    match_value = match.group(1) if match.groups() else match.group(0)
-                    findings.append(
-                        FindingRecord(
-                            id=_hash_id(conversation.conversation_id, message.id, "secret", category, match_value),
-                            type="secret",
-                            severity=severity,
-                            category=category,
-                            model=conversation.provider,
-                            provider=conversation.provider,
-                            conversation_id=conversation.conversation_id,
-                            message_id=message.id,
-                            role=role,
-                            timestamp=conversation.exported_at or datetime.now(timezone.utc),
-                            match_value=match_value,
-                            match_context=_snippet(text, match.start(), match.end()),
-                            source_field="content",
-                            confidence=0.96 if severity == "critical" else 0.9,
-                            department=department,
-                        )
-                    )
-
-            for category, (pattern, severity) in PII_PATTERNS.items():
-                for match in pattern.finditer(text):
-                    match_value = match.group(0)
-                    findings.append(
-                        FindingRecord(
-                            id=_hash_id(conversation.conversation_id, message.id, "pii", category, match_value),
-                            type="pii",
-                            severity=severity,
-                            category=category,
-                            model=conversation.provider,
-                            provider=conversation.provider,
-                            conversation_id=conversation.conversation_id,
-                            message_id=message.id,
-                            role=role,
-                            timestamp=conversation.exported_at or datetime.now(timezone.utc),
-                            match_value=match_value,
-                            match_context=_snippet(text, match.start(), match.end()),
-                            source_field="content",
-                            confidence=0.88,
-                            department=department,
-                        )
-                    )
-
-            if role == "assistant":
-                for pattern in SLOPSQUAT_PATTERNS:
-                    for match in pattern.finditer(text):
-                        match_value = match.group(1) if match.groups() else match.group(0)
-                        severity = "critical" if any(token in match_value.lower() for token in ["role", "endpoint", "password"]) else "high"
-                        findings.append(
-                            FindingRecord(
-                                id=_hash_id(conversation.conversation_id, message.id, "slopsquat", match_value),
-                                type="slopsquat",
-                                severity=severity,
-                                category="hallucinated_package",
-                                model=conversation.provider,
-                                provider=conversation.provider,
-                                conversation_id=conversation.conversation_id,
-                                message_id=message.id,
-                                role=role,
-                                timestamp=conversation.exported_at or datetime.now(timezone.utc),
-                                match_value=match_value,
-                                match_context=_snippet(text, match.start(), match.end()),
-                                source_field="content",
-                                confidence=0.8,
-                                department=department,
-                            )
-                        )
+    for row in rows:
+        finding_type = "pii" if row[14] == "pii" else "secret"
+        provider = _normalize_family(row[5])
+        model_name = _normalize_family(row[6] or row[5])
+        findings.append(
+            FindingRecord(
+                id=row[0],
+                type=finding_type,
+                severity=row[19],
+                category=row[14],
+                model=model_name,
+                provider=provider,
+                conversation_id=row[3],
+                message_id=row[7],
+                role=row[10],
+                timestamp=row[8] or datetime.now(timezone.utc),
+                match_value=row[17],
+                match_context=row[18],
+                source_field=row[11],
+                confidence=float(row[20]),
+                department=row[1],
+                status="open",
+                notes=None,
+                extra={
+                    "companyLabel": row[13],
+                    "companyCategory": row[14],
+                    "companySourceTable": row[15],
+                    "companySourceField": row[16],
+                },
+            )
+        )
 
     return tuple(findings)
 
@@ -350,7 +306,8 @@ class DashboardRepository:
         return list(_load_conversations(str(self._root)))
 
     def list_findings(self) -> list[FindingRecord]:
-        findings = [replace(finding) for finding in _load_findings(str(self._root))]
+        persisted = _load_persisted_findings() or tuple()
+        findings = [replace(finding) for finding in persisted]
         for finding in findings:
             if finding.id in self._status_overrides:
                 finding.status, finding.notes = self._status_overrides[finding.id]
