@@ -97,6 +97,56 @@ This means:
 - Adding a new entity = dataclass + table + one `map_imperatively()` call
 - Alembic sees the tables via shared `metadata` object
 
+## Analysis Pipeline (Core Product)
+
+```
+Chat exports (JSON/JSONL/MD)
+        ↓  chat_import.py (6+ format parsers)
+   chats table  ←──── source of truth (one row per message)
+        ↓  run_analysis_worker.py (polls every 15s or single-shot)
+        │
+        ├── Deterministic (deterministic_extraction.py)
+        │   ├── secrets — API keys, tokens, passwords, connection strings (regex)
+        │   ├── pii — emails, IPs, phone numbers, internal paths (regex)
+        │   └── slopsquatting — hallucinated packages in install/import (regex)
+        │
+        └── LLM-based (llm_extraction.py → Gemini Flash)
+            ├── llm_trivial — productive vs wasteful classification
+            ├── llm_sensitivity — business-sensitive content detection
+            └── llm_complexity — conversation complexity 1-10
+        │
+        ↓  all write to
+  findings table  ←── per-message findings, unified schema
+        ↓  refresh_dashboard_views()
+  materialized views  ←── pre-computed, frontend-facing
+        ↓
+   23 API endpoints (/api/v1/dashboard/*)
+        ↓
+   Frontend dashboard
+```
+
+### Analyzer Registry
+
+| Analyzer | Type | Category | Severity |
+|---|---|---|---|
+| `secrets` | Deterministic | `security_leak` | critical/high/medium |
+| `pii` | Deterministic | `content_leak` | high/medium |
+| `slopsquatting` | Deterministic | `supply_chain` | medium |
+| `llm_trivial` | LLM (Gemini) | `usage_quality` | low |
+| `llm_sensitivity` | LLM (Gemini) | `content_leak` | critical/high/medium |
+| `llm_complexity` | LLM (Gemini) | `complexity` | info |
+
+### Analyzer Contract
+
+All analyzers follow the same interface:
+
+```python
+async def analyze_X(chat_ids: list[int], messages: list[str]) -> list[Finding]
+```
+
+Findings are written to the `findings` table via `_save_findings()`. The worker
+fetches unanalyzed messages per analyzer (idempotent — skips already-processed).
+
 ## Data Flow
 
 ### 1. HTTP Request Flow

@@ -1,5 +1,13 @@
 # TODO — Data & Analysis Pipeline
 
+## Docs
+- [x] `pipeline.md` — data model, analyzer contract, ops commands
+- [x] `concept.md` — product narrative, legal analysis, business model
+- [x] `evaluation_output.md` — gap analysis with priority rankings
+- [x] `data-model.md` — updated with chats, findings, materialized views
+- [x] `architecture.md` — updated with analysis pipeline diagram + analyzer registry
+- [x] `API/ENDPOINT_QUICK_REFERENCE.md` — corrected status of trends/alerts endpoints
+
 ## Data Preprocessing
 - [x] Chat import — 6+ formats (ChatGPT, Gemini, Wildchat, Claude, Pi, AntiGravity)
 - [x] Text cleaning & PII/secret redaction (regex)
@@ -16,11 +24,12 @@
 - [x] Analysis logic — regex matching against company data rules
 - [x] Rule auto-generation from employees/customers/documents tables
 - [x] Repository + persistence layer
-- [ ] **Wire into `run_analysis_worker.py`** (currently skipped with TODO)
-- [ ] Secrets scanner (leaked keys, tokens, connection strings)
-- [ ] PII scanner (names, emails, phone numbers matched against company DB)
-- [ ] Slopsquatting scanner (hallucinated packages — check against real registries)
+- [x] **Wired into `run_analysis_worker.py`** via `deterministic_extraction.py`
+- [x] Secrets scanner (API keys, tokens, passwords, connection strings, private keys)
+- [x] PII scanner (emails, IPs, phone numbers, internal paths)
+- [x] Slopsquatting scanner (hallucinated packages in install/import statements)
 - [ ] Financial data detection (contract values, salary data from company tables)
+- [ ] Registry lookup for slopsquatting (verify packages against PyPI/npm)
 
 ## LLM Data Analysis
 - [x] Gemini Flash integration — 3 analyzers (trivial, sensitivity, complexity)
@@ -52,7 +61,8 @@
 - [ ] Export findings as CSV/PDF
 
 ## Worker / Orchestration
-- [x] `run_analysis_worker.py` — loop mode, LLM wired
+- [x] `run_analysis_worker.py` — loop mode, both deterministic + LLM wired
 - [x] Materialized view refresh after analysis
-- [ ] Wire deterministic analyzers into worker
-- [ ] End-to-end pipeline: import → deterministic → LLM → refresh views
+- [x] Deterministic analyzers wired into worker
+- [x] End-to-end pipeline: import → deterministic → LLM → refresh views
+- [ ] Add `google-genai` to docker image (added to pyproject.toml)

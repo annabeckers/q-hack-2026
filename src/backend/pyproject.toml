@@ -40,6 +40,7 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy>=0.50b",
     "opentelemetry-instrumentation-redis>=0.50b",
     "mangum>=0.19",
+    "google-genai>=1.71.0",
 ]
 
 [dependency-groups]

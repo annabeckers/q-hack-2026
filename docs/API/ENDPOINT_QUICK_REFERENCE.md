@@ -30,7 +30,7 @@
 
 ---
 
-## Trends Endpoints (implemented later)
+## Trends Endpoints
 
 | Endpoint | Method | Purpose | Params |
 |----------|--------|---------|--------|
@@ -43,7 +43,7 @@
 
 ---
 
-## Alerts Endpoints (implemented later)
+## Alerts Endpoints
 
 | Endpoint | Method | Purpose | Params |
 |----------|--------|---------|--------|

@@ -26,21 +26,9 @@ logger = logging.getLogger("analysis-worker")
 
 
 async def run_deterministic(batch_size: int) -> dict[str, int]:
-    """Run deterministic analyzers (Anna's + Finn's).
-
-    Each analyzer function should follow the same pattern:
-        async def analyze_X(chat_ids: list[int], messages: list[str]) -> list[Finding]
-
-    Plug them in here as they're built.
-    """
-    # TODO: Anna plugs in secrets + PII analyzers here
-    # TODO: Finn plugs in slopsquatting analyzer here
-    #
-    # from app.application.services.deterministic_extraction import run_deterministic_extraction
-    # return await run_deterministic_extraction(batch_size=batch_size)
-
-    logger.info("Deterministic analyzers: not yet plugged in — skipping")
-    return {}
+    """Run deterministic analyzers — secrets, PII, slopsquatting (regex-based)."""
+    from app.application.services.deterministic_extraction import run_deterministic_extraction
+    return await run_deterministic_extraction(batch_size=batch_size)
 
 
 async def run_llm(batch_size: int) -> dict[str, int]:
