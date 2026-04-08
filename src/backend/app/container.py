@@ -2,7 +2,11 @@
 
 from redis.asyncio import Redis
 from neo4j import AsyncGraphDatabase
-import chromadb
+
+try:
+    import chromadb
+except Exception:  # pragma: no cover - optional test/runtime dependency
+    chromadb = None
 
 from app.config import settings
 from app.infrastructure.database import async_engine, async_session_factory
@@ -25,10 +29,13 @@ class Container:
             settings.neo4j_uri,
             auth=(settings.neo4j_user, settings.neo4j_password),
         )
-        self.chroma_client = chromadb.HttpClient(
-            host=settings.chroma_host,
-            port=settings.chroma_port,
-        )
+        if chromadb is not None:
+            self.chroma_client = chromadb.HttpClient(
+                host=settings.chroma_host,
+                port=settings.chroma_port,
+            )
+        else:
+            self.chroma_client = None
 
     async def close(self):
         """Cleanup all connections."""

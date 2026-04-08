@@ -91,6 +91,59 @@ def _normalize_text(value: Any) -> str:
     return ""
 
 
+def _message_author(message: dict[str, Any]) -> str:
+    return str(message.get("author") or message.get("role") or message.get("speaker") or "unknown")
+
+
+def _message_content(message: dict[str, Any]) -> str:
+    content = message.get("content")
+    if isinstance(content, str):
+        return content.replace("\x00", "")
+    if isinstance(content, list):
+        return _normalize_text(content)
+    if isinstance(content, dict):
+        return _normalize_text(content)
+    for key in ("text", "message", "prompt"):
+        if isinstance(message.get(key), str):
+            return str(message[key]).replace("\x00", "")
+    return ""
+
+
+def _conversation_messages(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        messages = payload.get("messages") or payload.get("conversation")
+        if isinstance(messages, list):
+            return [message for message in messages if isinstance(message, dict)]
+        return []
+    if isinstance(payload, list):
+        return [message for message in payload if isinstance(message, dict)]
+    return []
+
+
+def _conversation_entries(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        return [payload]
+    return []
+
+
+def _extract_conversation_id(entry: dict[str, Any], fallback: str) -> str:
+    return str(entry.get("conversation_hash") or entry.get("conversation_id") or entry.get("url") or fallback)
+
+
+def _extract_provider(entry: dict[str, Any], fallback: str) -> str:
+    return _normalize_family(str(entry.get("author") or entry.get("model") or entry.get("provider") or fallback))
+
+
+def _extract_title(entry: dict[str, Any], fallback: str) -> str:
+    return str(entry.get("title") or entry.get("name") or fallback)
+
+
+def _extract_exported_at(entry: dict[str, Any]) -> datetime | None:
+    return _parse_timestamp(entry.get("date") or entry.get("timestamp") or entry.get("created_at"))
+
+
 def _word_count(text: str) -> int:
     return len(re.findall(r"\b[\w'-]+\b", text))
 
@@ -170,51 +223,31 @@ def _load_conversations(root: str) -> tuple[ConversationRecord, ...]:
 
     for path in sorted(exports_dir.glob("*.json")):
         with path.open(encoding="utf-8") as handle:
-            raw = json.load(handle)
+            payload = json.load(handle)
 
-        # Normalize: list-format files (e.g. wildchat) contain multiple conversations
-        payloads: list[dict] = []
-        if isinstance(raw, list):
-            for entry in raw:
-                if isinstance(entry, dict) and "conversation" in entry:
-                    # wildchat format: {conversation_hash, model, conversation: [{content, role}]}
-                    payloads.append({
-                        "title": entry.get("conversation_hash", path.stem),
-                        "author": entry.get("model", path.stem.split("_")[0]),
-                        "date": entry.get("timestamp"),
-                        "messages": [
-                            {"id": f"{entry.get('conversation_hash', '')}-{i}",
-                             "author": msg.get("role", "unknown"),
-                             "content": msg.get("content", "")}
-                            for i, msg in enumerate(entry["conversation"])
-                            if isinstance(msg, dict)
-                        ],
-                    })
-        elif isinstance(raw, dict):
-            payloads.append(raw)
-
-        for payload in payloads:
+        for entry_index, entry in enumerate(_conversation_entries(payload)):
             messages: list[ConversationMessage] = []
-            for message in payload.get("messages", []):
-                if not isinstance(message, dict):
-                    continue
-                content = _normalize_text(message.get("content"))
+            for message_index, message in enumerate(_conversation_messages(entry)):
+                content = _message_content(message)
                 if not content:
                     continue
                 messages.append(
                     ConversationMessage(
-                        id=str(message.get("id") or _hash_id(path.stem, content[:32])),
-                        author=str(message.get("author") or "unknown"),
+                        id=str(message.get("id") or message.get("turn_identifier") or _hash_id(path.stem, str(entry_index), str(message_index), content[:32])),
+                        author=_message_author(message),
                         content=content,
                     )
                 )
 
+            if not messages:
+                continue
+
             records.append(
                 ConversationRecord(
-                    conversation_id=str(payload.get("url") or payload.get("title") or path.stem),
-                    provider=_normalize_family(str(payload.get("author") or path.stem.split("_")[0])),
-                    title=str(payload.get("title") or path.stem),
-                    exported_at=_parse_timestamp(payload.get("date")),
+                    conversation_id=_extract_conversation_id(entry, f"{path.stem}-{entry_index}"),
+                    provider=_extract_provider(entry, path.stem.split("_")[0]),
+                    title=_extract_title(entry, path.stem),
+                    exported_at=_extract_exported_at(entry),
                     messages=tuple(messages),
                 )
             )
