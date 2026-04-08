@@ -9,6 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from app.config import settings
 from app.domain.dashboard import ConversationMessage, ConversationRecord, FindingRecord, UsageRecord
 
 
@@ -338,6 +339,83 @@ def _load_findings(root: str) -> tuple[FindingRecord, ...]:
     return tuple(findings)
 
 
+def _load_persisted_findings() -> tuple[FindingRecord, ...] | None:
+    try:
+        import psycopg2
+
+        database_url = settings.database_url.replace("+asyncpg", "")
+        if not database_url.startswith("postgres"):
+            return None
+
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id FROM deterministic_analysis_runs
+                    ORDER BY completed_at DESC
+                    LIMIT 1
+                    """
+                )
+                latest_run = cur.fetchone()
+                if not latest_run:
+                    return None
+
+                cur.execute(
+                    """
+                    SELECT
+                        id, department, source_file, conversation_key, conversation_title, provider,
+                        model_name, message_id, message_timestamp, author, role, source_field,
+                        company_rule_id, company_label, company_category, company_source_table,
+                        company_source_field, matched_text, match_context, severity, confidence
+                    FROM deterministic_chat_matches
+                    WHERE analysis_run_id = %s
+                    ORDER BY conversation_key, message_timestamp NULLS LAST, message_id
+                    """,
+                    (latest_run[0],),
+                )
+                rows = cur.fetchall()
+    except Exception:
+        return None
+
+    if not rows:
+        return None
+
+    findings: list[FindingRecord] = []
+    for row in rows:
+        finding_type = "pii" if row[14] == "pii" else "secret"
+        provider = _normalize_family(row[5])
+        model_name = _normalize_family(row[6] or row[5])
+        findings.append(
+            FindingRecord(
+                id=row[0],
+                type=finding_type,
+                severity=row[19],
+                category=row[14],
+                model=model_name,
+                provider=provider,
+                conversation_id=row[3],
+                message_id=row[7],
+                role=row[10],
+                timestamp=row[8] or datetime.now(timezone.utc),
+                match_value=row[17],
+                match_context=row[18],
+                source_field=row[11],
+                confidence=float(row[20]),
+                department=row[1],
+                status="open",
+                notes=None,
+                extra={
+                    "companyLabel": row[13],
+                    "companyCategory": row[14],
+                    "companySourceTable": row[15],
+                    "companySourceField": row[16],
+                },
+            )
+        )
+
+    return tuple(findings)
+
+
 class DashboardRepository:
     def __init__(self, root: Path | None = None):
         self._root = root or _project_root()
@@ -350,7 +428,8 @@ class DashboardRepository:
         return list(_load_conversations(str(self._root)))
 
     def list_findings(self) -> list[FindingRecord]:
-        findings = [replace(finding) for finding in _load_findings(str(self._root))]
+        persisted = _load_persisted_findings() or tuple()
+        findings = [replace(finding) for finding in persisted]
         for finding in findings:
             if finding.id in self._status_overrides:
                 finding.status, finding.notes = self._status_overrides[finding.id]
