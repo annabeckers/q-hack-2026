@@ -1,0 +1,58 @@
+# Application configuration — loaded at startup, overridden by env vars.
+# Usage: settings in app/config.py merge this file with environment.
+
+app:
+  name: qhack-2026
+  version: 0.1.0
+  environment: development  # development | staging | production
+
+# Feature flags — toggle capabilities without code changes
+features:
+  agents_enabled: true
+  dataloader_enabled: true
+  rust_worker_enabled: false
+  scheduler_enabled: false
+  webhooks_enabled: true
+  sse_enabled: true
+  three_d_enabled: true
+
+# Agent configuration
+agents:
+  default_framework: anthropic  # strands | langgraph | openai | anthropic | a2a
+  max_turns: 10
+  timeout_seconds: 60
+  memory_ttl_hours: 24
+  orchestrator:
+    mode: sequential  # sequential | parallel
+    agents:
+      # Supply chain / logistics (Spherecast challenge — Agnes)
+      # Swap system prompts for other challenges at hackathon start
+      - name: agnes
+        framework: anthropic
+        system: "You are Agnes, an AI supply chain manager. Analyze parcel flow data, predict congestion, detect SLA breaches, and recommend actions (reroute, alert, reorder). Cite data before recommending."
+      - name: planner
+        framework: anthropic
+        system: "You translate Agnes's recommendations into concrete action plans with steps, owners, and timelines."
+      - name: critic
+        framework: anthropic
+        system: "You challenge assumptions in supply chain plans. Identify single points of failure, unrealistic timelines, and missing edge cases."
+
+# Scheduled tasks
+scheduler:
+  data_sync_interval_minutes: 30
+  session_cleanup_cron: "0 3 * * *"  # daily at 3am
+  analytics_refresh_interval_hours: 1
+
+# Security
+security:
+  rate_limit_rpm: 120
+  cors_origins: "*"
+  max_upload_size_mb: 50
+
+# Database selection
+databases:
+  primary: postgresql  # postgresql | sqlite
+  analytics: duckdb
+  graph: neo4j
+  vectors: chromadb
+  cache: redis

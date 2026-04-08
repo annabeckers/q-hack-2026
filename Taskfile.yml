@@ -1,0 +1,195 @@
+version: '3'
+
+vars:
+  BACKEND_DIR: src/backend
+  FRONTEND_DIR: src/frontend
+  DATALOADER_DIR: src/dataloader
+
+tasks:
+  # ── Docker ──────────────────────────────────────
+  up:
+    desc: Start all services
+    cmds:
+      - DOCKER_BUILDKIT=1 docker compose up -d
+
+  down:
+    desc: Stop all services
+    cmds:
+      - docker compose down
+
+  logs:
+    desc: Tail all service logs
+    cmds:
+      - docker compose logs -f
+
+  build:
+    desc: Build all Docker images
+    cmds:
+      - docker compose build
+
+  nuke:
+    desc: Stop services and remove all volumes
+    cmds:
+      - docker compose down -v
+
+  # ── Backend ─────────────────────────────────────
+  dev:
+    desc: Run backend in dev mode (local, not Docker)
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  test:
+    desc: Run backend tests
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run pytest tests/ -v
+
+  lint:
+    desc: Lint backend code
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run ruff check app/ tests/
+      - uv run ruff format --check app/ tests/
+
+  fmt:
+    desc: Format backend code
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run ruff format app/ tests/
+
+  # ── Database ────────────────────────────────────
+  migrate:
+    desc: Run Alembic migrations
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run alembic upgrade head
+
+  migration:
+    desc: Create a new migration
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run alembic revision --autogenerate -m "{{.CLI_ARGS}}"
+
+  # ── Frontend ────────────────────────────────────
+  frontend:
+    desc: Run frontend in dev mode
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - bun run dev
+
+  frontend-build:
+    desc: Build frontend for production
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - bun run build
+
+  # ── Dataloader ─────────────────────────────────
+  ingest:
+    desc: Run dataloader ingestion pipeline
+    dir: "{{.DATALOADER_DIR}}"
+    cmds:
+      - uv run python -m dataloader.main ingest {{.CLI_ARGS}}
+
+  extract:
+    desc: Extract text from documents (PDF, etc.)
+    dir: "{{.DATALOADER_DIR}}"
+    cmds:
+      - uv run python -m dataloader.main extract {{.CLI_ARGS}}
+
+  # ── Rust Worker ────────────────────────────────
+  rust-dev:
+    desc: Run Rust worker in dev mode
+    dir: src/rust-worker
+    cmds:
+      - cargo run
+
+  rust-build:
+    desc: Build Rust worker (release)
+    dir: src/rust-worker
+    cmds:
+      - cargo build --release
+
+  # ── Scheduler ─────────────────────────────────
+  scheduler:
+    desc: Run background scheduler (cron jobs)
+    dir: "{{.BACKEND_DIR}}"
+    env:
+      SCHEDULER_ENABLED: "true"
+    cmds:
+      - uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 1
+
+  # ── Kubernetes ─────────────────────────────────
+  k8s-deploy:
+    desc: Deploy to Kubernetes via Helm
+    cmds:
+      - helm install hackathon ./src/infra/k8s/hackathon {{.CLI_ARGS}}
+
+  k8s-upgrade:
+    desc: Upgrade Kubernetes deployment
+    cmds:
+      - helm upgrade hackathon ./src/infra/k8s/hackathon {{.CLI_ARGS}}
+
+  # ── Data ──────────────────────────────────────
+  seed:
+    desc: Seed database with demo data
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run python scripts/seed.py
+
+  # ── Edge Deploys ──────────────────────────────
+  deploy-vercel:
+    desc: Deploy frontend to Vercel
+    cmds:
+      - npx vercel --cwd src/frontend
+
+  deploy-cloudflare:
+    desc: Deploy frontend to Cloudflare Pages
+    cmds:
+      - npx wrangler pages deploy src/frontend/dist --project-name hackathon
+
+  # ── AWS Lambda ─────────────────────────────────
+  deploy-lambda:
+    desc: Deploy backend to AWS Lambda via SAM
+    dir: src/infra/aws/lambda
+    cmds:
+      - sam build --template-file template.yaml --use-container
+      - sam deploy --resolve-s3 --capabilities CAPABILITY_IAM
+
+  deploy-lambda-full:
+    desc: Deploy Lambda + frontend to S3/CloudFront
+    dir: src/infra/aws/lambda
+    cmds:
+      - bash deploy.sh {{.CLI_ARGS}}
+
+  # ── Monorepo (Turborepo) ──────────────────────
+  turbo-build:
+    desc: Parallel build all packages via Turborepo (cached)
+    cmds:
+      - npx turbo run build
+
+  turbo-lint:
+    desc: Parallel lint all packages via Turborepo
+    cmds:
+      - npx turbo run lint
+
+  turbo-test:
+    desc: Run all tests via Turborepo
+    cmds:
+      - npx turbo run test
+
+  # ── API Exploration ───────────────────────────
+  api-test:
+    desc: Test an API from config/apis.yaml
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run python scripts/api_explore.py {{.CLI_ARGS}}
+
+  # ── CI ────────────────────────────────────────
+  ci:
+    desc: Full CI pipeline locally (lint + test + build)
+    cmds:
+      - task: lint
+      - task: test
+      - task: frontend-build
+      - task: rust-build
