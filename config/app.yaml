@@ -51,8 +51,8 @@ security:
 
 # Database selection
 databases:
-  primary: postgresql  # postgresql | sqlite
-  analytics: duckdb
+  primary: postgresql
+  analytics: postgresql
   graph: neo4j
   vectors: chromadb
   cache: redis

@@ -11,8 +11,6 @@ __pycache__
 .env
 .env.local
 *.db
-*.duckdb
-*.duckdb.wal
 docs
 resources/experiments
 resources/presentations

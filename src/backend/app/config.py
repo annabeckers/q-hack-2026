@@ -32,9 +32,6 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash"
 
-    # DuckDB (analytics)
-    duckdb_path: str = "hackathon.duckdb"
-
     # Rust Worker
     rust_worker_url: str = "http://localhost:8080"
 
