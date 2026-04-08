@@ -1,8 +1,11 @@
 """Shared test fixtures — SQLite in-memory database, async client, test user."""
 
 from collections.abc import AsyncGenerator
+import os
 from pathlib import Path
 import sys
+
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite://")
 
 import pytest
 from httpx import ASGITransport, AsyncClient
