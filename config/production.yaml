@@ -1,0 +1,29 @@
+# Production overrides — layer on top of app.yaml
+# Usage: APP_CONFIG=config/production.yaml task dev
+
+app:
+  environment: production
+
+features:
+  agents_enabled: true
+  dataloader_enabled: true
+  rust_worker_enabled: true
+  scheduler_enabled: true
+  webhooks_enabled: true
+  sse_enabled: true
+  three_d_enabled: true
+
+security:
+  rate_limit_rpm: 60
+  cors_origins: "https://your-domain.com"
+  max_upload_size_mb: 25
+
+agents:
+  default_framework: anthropic
+  max_turns: 15
+  timeout_seconds: 120
+  memory_ttl_hours: 48
+
+scheduler:
+  data_sync_interval_minutes: 15
+  analytics_refresh_interval_hours: 1

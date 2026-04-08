@@ -1,0 +1,61 @@
+# Pre-configured API templates for hackathon API exploration.
+# Usage: APIClientFactory.from_config("weather") or CLI: api_explore.py weather /path
+
+apis:
+  # ── Weather (OpenWeatherMap) ────────────────────────
+  weather:
+    base_url: https://api.openweathermap.org/data/2.5
+    auth_type: api_key
+    auth_config:
+      param_name: appid
+      key_env: WEATHER_API_KEY
+    cache_ttl: 300
+
+  # ── GitHub API ──────────────────────────────────────
+  github:
+    base_url: https://api.github.com
+    auth_type: bearer
+    auth_config:
+      token_env: GITHUB_TOKEN
+    headers:
+      Accept: application/vnd.github.v3+json
+      User-Agent: hackathon-client
+    cache_ttl: 120
+
+  # ── OAuth2 Example ──────────────────────────────────
+  example_oauth:
+    base_url: https://api.example.com/v1
+    auth_type: oauth2
+    auth_config:
+      token_url: https://api.example.com/oauth/token
+      client_id_env: OAUTH_CLIENT_ID
+      client_secret_env: OAUTH_CLIENT_SECRET
+      scope: read write
+    cache_ttl: 60
+
+  # ── Generic API Key Service ─────────────────────────
+  generic_apikey:
+    base_url: https://api.example.com/v1
+    auth_type: api_key
+    auth_config:
+      param_name: api_key
+      key_env: GENERIC_API_KEY
+    cache_ttl: 180
+
+  # ── Generic Basic Auth Service ──────────────────────
+  generic_basic:
+    base_url: https://api.example.com/v1
+    auth_type: basic
+    auth_config:
+      username_env: BASIC_AUTH_USER
+      password_env: BASIC_AUTH_PASS
+
+  # ── Blank / Custom Template ─────────────────────────
+  # Copy this and fill in your hackathon API details
+  custom_template:
+    base_url: https://your-api.example.com
+    auth_type: bearer
+    auth_config:
+      token_env: CUSTOM_API_TOKEN
+    headers: {}
+    cache_ttl: 0

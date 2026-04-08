@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'hackathon-backend'
+    metrics_path: /api/v1/metrics
+    static_configs:
+      - targets: ['backend:8000']
+    # The /metrics endpoint returns JSON — Prometheus expects text format.
+    # For proper Prometheus metrics, add prometheus_client to the backend
+    # and expose /metrics in Prometheus text format.
+    # This config works with a custom metrics endpoint that returns JSON
+    # which Grafana can query directly via the JSON datasource plugin.
+
+  - job_name: 'rust-worker'
+    metrics_path: /health
+    static_configs:
+      - targets: ['rust-worker:8080']
