@@ -1,11 +1,14 @@
 """Analysis worker — polls for unprocessed chats and runs all analyzers.
 
-This is the single entry point that orchestrates deterministic + LLM analysis.
+Architecture: Runs as a separate Docker service (same image, different entrypoint).
+Decoupled from the API — if the worker crashes, the API keeps serving cached views.
+
 Each analyzer is idempotent: it skips messages it already has findings for.
+After producing findings, refreshes materialized views for the dashboard.
 
 Usage:
     python scripts/run_analysis_worker.py                # single run
-    python scripts/run_analysis_worker.py --loop          # continuous polling
+    python scripts/run_analysis_worker.py --loop          # continuous (default interval: 30s)
     python scripts/run_analysis_worker.py --loop --interval 15
     python scripts/run_analysis_worker.py --only llm      # only LLM analyzers
     python scripts/run_analysis_worker.py --only det      # only deterministic
@@ -15,26 +18,43 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import logging
+import signal
 import sys
 from pathlib import Path
 
+import structlog
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-logger = logging.getLogger("analysis-worker")
+log = structlog.get_logger("analysis-worker")
+
+# Graceful shutdown flag
+_shutdown = asyncio.Event()
+
+
+def _handle_signal(sig: signal.Signals) -> None:
+    log.info("shutdown_signal", signal=sig.name)
+    _shutdown.set()
 
 
 async def run_deterministic(batch_size: int) -> dict[str, int]:
     """Run deterministic analyzers — secrets, PII, slopsquatting (regex-based)."""
-    from app.application.services.deterministic_extraction import run_deterministic_extraction
-    return await run_deterministic_extraction(batch_size=batch_size)
+    try:
+        from app.application.services.deterministic_extraction import run_deterministic_extraction
+        return await run_deterministic_extraction(batch_size=batch_size)
+    except Exception as e:
+        log.error("deterministic_failed", error=str(e))
+        return {}
 
 
 async def run_llm(batch_size: int) -> dict[str, int]:
     """Run LLM-based analyzers (Gemini Flash)."""
-    from app.application.services.llm_extraction import run_llm_extraction
-    return await run_llm_extraction(batch_size=batch_size)
+    try:
+        from app.application.services.llm_extraction import run_llm_extraction
+        return await run_llm_extraction(batch_size=batch_size)
+    except Exception as e:
+        log.error("llm_failed", error=str(e))
+        return {}
 
 
 async def refresh_dashboard() -> None:
@@ -45,11 +65,14 @@ async def refresh_dashboard() -> None:
     async with async_session_factory() as session:
         async with session.begin():
             await session.execute(text("SELECT refresh_dashboard_views()"))
-    logger.info("Dashboard views refreshed")
+    log.info("dashboard_views_refreshed")
 
 
-async def run_all(batch_size: int, only: str | None = None) -> dict[str, int]:
-    """Run all analyzers and refresh dashboard views."""
+HEALTH_FILE = Path("/tmp/worker-healthy")
+
+
+async def run_cycle(batch_size: int, only: str | None = None) -> dict[str, int]:
+    """Run one analysis cycle: analyzers → refresh dashboard."""
     stats: dict[str, int] = {}
 
     if only in (None, "det"):
@@ -60,9 +83,12 @@ async def run_all(batch_size: int, only: str | None = None) -> dict[str, int]:
         llm_stats = await run_llm(batch_size)
         stats.update(llm_stats)
 
-    # Refresh frontend-facing views after analysis
+    # Refresh frontend-facing views after producing new findings
     if sum(stats.values()) > 0:
         await refresh_dashboard()
+
+    # Touch health file for Docker health check
+    HEALTH_FILE.write_text("ok")
 
     return stats
 
@@ -72,24 +98,35 @@ async def main() -> None:
     parser.add_argument("--batch-size", type=int, default=20)
     parser.add_argument("--only", choices=["det", "llm"], help="Run only deterministic or LLM analyzers")
     parser.add_argument("--loop", action="store_true", help="Run continuously")
-    parser.add_argument("--interval", type=int, default=15, help="Seconds between runs in loop mode")
+    parser.add_argument("--interval", type=int, default=30, help="Seconds between runs in loop mode")
     args = parser.parse_args()
 
+    # Register signal handlers for graceful shutdown
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, lambda s=sig: _handle_signal(s))
+
     if args.loop:
-        logger.info("Worker started in loop mode (interval: %ds)", args.interval)
-        while True:
-            stats = await run_all(args.batch_size, only=args.only)
+        log.info("worker_started", mode="loop", interval=args.interval, batch_size=args.batch_size)
+        while not _shutdown.is_set():
+            stats = await run_cycle(args.batch_size, only=args.only)
             total = sum(stats.values())
             if total > 0:
-                logger.info("Produced %d findings: %s", total, stats)
+                log.info("cycle_complete", findings=total, breakdown=stats)
             else:
-                logger.debug("No new findings — sleeping %ds", args.interval)
-            await asyncio.sleep(args.interval)
+                log.debug("cycle_idle", message="no new findings")
+
+            # Wait for interval or shutdown signal
+            try:
+                await asyncio.wait_for(_shutdown.wait(), timeout=args.interval)
+            except asyncio.TimeoutError:
+                pass  # Normal — interval elapsed, run next cycle
+
+        log.info("worker_stopped", reason="shutdown signal")
     else:
-        stats = await run_all(args.batch_size, only=args.only)
+        stats = await run_cycle(args.batch_size, only=args.only)
         total = sum(stats.values())
-        print(f"Results: {stats}")
-        print(f"Total findings: {total}")
+        log.info("single_run_complete", findings=total, breakdown=stats)
 
 
 if __name__ == "__main__":

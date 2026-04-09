@@ -100,6 +100,22 @@ class ToolRegistry:
             for t in self.list_tools(tag)
         ]
 
+    def to_gemini_format(self, tag: str | None = None) -> list[dict]:
+        """Convert tools to Gemini function declaration format.
+
+        Returns a list of dicts compatible with google.genai types.Tool.
+        """
+        declarations = []
+        for t in self.list_tools(tag):
+            decl = {
+                "name": t.name,
+                "description": t.description,
+            }
+            if t.parameters.get("properties"):
+                decl["parameters"] = t.parameters
+            declarations.append(decl)
+        return declarations
+
     def _extract_schema(self, fn: Callable) -> dict:
         """Extract JSON Schema from function signature + type hints."""
         hints = get_type_hints(fn)

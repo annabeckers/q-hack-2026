@@ -161,7 +161,7 @@ function ComplianceGauge({ score, index }: { score: number; index: number }) {
   );
 }
 
-// Premium KPI Card
+// Minimal KPI Card
 function KPICard({
   title,
   value,
@@ -182,71 +182,56 @@ function KPICard({
   badge?: string;
 }) {
   const containerVariants = {
-    hidden: { opacity: 0, y: 20 },
+    hidden: { opacity: 0, y: 10 },
     visible: {
       opacity: 1,
       y: 0,
-      transition: { delay: index * 0.08, duration: 0.5, ease: 'easeOut' },
+      transition: { delay: index * 0.05, duration: 0.4, ease: 'easeOut' },
     },
   };
 
   return (
-    <motion.div variants={containerVariants}>
-      <Card className="h-full relative overflow-hidden group hover:shadow-lg hover:shadow-[var(--accent-glow)] transition-all duration-300">
-        {/* Icon background circle */}
-        {Icon && (
-          <div className="absolute -right-8 -top-8 w-24 h-24 bg-[var(--accent)] opacity-5 rounded-full group-hover:opacity-10 transition-opacity" />
-        )}
-
-        <div className="relative space-y-4">
-          <div className="flex items-start justify-between">
-            <h3 className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">
+    <motion.div variants={containerVariants} className="h-full">
+      <div className="glass-card rounded-2xl p-5 h-full flex flex-col justify-between group transition-shadow hover:shadow-lg">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2 text-[var(--text-secondary)]">
+            {Icon && <Icon size={16} className="opacity-70" />}
+            <h3 className="text-xs font-medium tracking-tight">
               {title}
             </h3>
-            {Icon && (
-              <div className="p-2 bg-[var(--bg-surface)] rounded-md">
-                <Icon size={16} className="text-[var(--accent)]" />
+          </div>
+          {badge && (
+            <Badge variant="critical" className="text-[10px] font-semibold px-1.5 py-0.5">
+              {badge}
+            </Badge>
+          )}
+        </div>
+
+        {value !== undefined ? (
+          <div className="mt-4">
+            <div className="flex items-baseline gap-2">
+              <div className="text-4xl font-semibold tracking-tight text-[var(--text-primary)]">
+                <CountUp target={value} format={format} />
+              </div>
+            </div>
+
+            {trend && (
+              <div className="flex items-center gap-1.5 mt-2 text-xs font-medium">
+                <span className={trend.direction === 'up' ? 'text-[var(--critical)]' : 'text-[var(--success)]'}>
+                  {trend.direction === 'up' ? '↗' : '↘'} {trend.percent}%
+                </span>
+                <span className="text-[var(--text-tertiary)]">vs last week</span>
+              </div>
+            )}
+
+            {sparkline && sparkline.length > 1 && (
+              <div className="h-4 mt-3 opacity-50 group-hover:opacity-100 transition-opacity">
+                <Sparkline values={sparkline} />
               </div>
             )}
           </div>
-
-          {value !== undefined ? (
-            <div className="space-y-3">
-              <div className="flex items-baseline gap-2">
-                <div className="text-5xl font-bold text-[var(--text-primary)] leading-none">
-                  <CountUp target={value} format={format} />
-                </div>
-                {trend && (
-                  <div
-                    className={`text-sm font-semibold flex items-center gap-1 px-2 py-1 rounded ${
-                      trend.direction === 'up'
-                        ? 'bg-[var(--critical-muted)] text-[var(--critical)]'
-                        : 'bg-[var(--success-muted)] text-[var(--success)]'
-                    }`}
-                  >
-                    <span>{trend.direction === 'up' ? '↑' : '↓'}</span>
-                    {trend.percent}%
-                  </div>
-                )}
-              </div>
-
-              {sparkline && sparkline.length > 1 && (
-                <div className="h-6 -mx-2">
-                  <Sparkline values={sparkline} />
-                </div>
-              )}
-            </div>
-          ) : null}
-
-          {badge && (
-            <div className="flex gap-2 pt-2">
-              <Badge variant="critical" className="text-xs animate-pulse">
-                {badge}
-              </Badge>
-            </div>
-          )}
-        </div>
-      </Card>
+        ) : null}
+      </div>
     </motion.div>
   );
 }
@@ -350,97 +335,9 @@ function ThreatDistribution({ distribution }: { distribution: types.SeverityDist
   );
 }
 
-// Recent Detections Timeline
-function RecentDetections({ findings }: { findings: types.Finding[] }) {
-  const sorted = findings
-    .sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime())
-    .slice(0, 8);
+// Removed RecentDetections and InsightBar to compress layout
 
-  const getTypeIcon = (type: types.FindingType) => {
-    switch (type) {
-      case 'secret':
-        return <KeyRound size={14} className="text-[var(--critical)]" />;
-      case 'pii':
-        return <UserX size={14} className="text-[var(--critical)]" />;
-      case 'slopsquat':
-        return <Package size={14} className="text-[var(--high)]" />;
-      default:
-        return <Zap size={14} className="text-[var(--medium)]" />;
-    }
-  };
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.05,
-        delayChildren: 0.1,
-      },
-    },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, x: -10 },
-    visible: { opacity: 1, x: 0, transition: { duration: 0.3 } },
-  };
-
-  return (
-    <motion.div variants={containerVariants} initial="hidden" whileInView="visible">
-      <Card header={
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-[var(--text-primary)]">
-            Recent Detections
-          </h3>
-          <a href="/leaks" className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] font-semibold">
-            View All →
-          </a>
-        </div>
-      } className="relative overflow-hidden">
-        <div className="space-y-2 max-h-[400px] overflow-y-auto">
-          {sorted.map((item, idx) => (
-            <motion.div
-              key={item.id}
-              variants={itemVariants}
-              className={`flex items-start gap-3 p-3 rounded-md transition-colors ${
-                idx % 2 === 0 ? 'bg-[var(--bg-2)]' : ''
-              } hover:bg-[var(--bg-surface-hover)]`}
-            >
-              <div className="pt-0.5 flex-shrink-0">
-                {getTypeIcon(item.type)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge
-                    variant={item.severity}
-                    className="text-xs"
-                  >
-                    {item.severity.toUpperCase()}
-                  </Badge>
-                  <span className="text-xs text-[var(--text-secondary)]">
-                    {item.type.toUpperCase()}
-                  </span>
-                </div>
-                <p className="text-sm font-medium text-[var(--text-primary)] mt-1 truncate">
-                  {item.category}
-                </p>
-                <div className="flex gap-3 mt-1 text-xs text-[var(--text-tertiary)]">
-                  <span>{item.department}</span>
-                  <span>•</span>
-                  <span>{item.provider}</span>
-                  <span>•</span>
-                  <span>{formatRelativeTime(item.detectedAt)}</span>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </Card>
-    </motion.div>
-  );
-}
-
-// Real-Time Alert Feed - THE WOW FEATURE
+// Real-Time Alert Feed
 interface StreamingAlert extends types.Alert {
   displayTime: string;
   glowing: boolean;
@@ -454,220 +351,84 @@ function LiveThreatFeed() {
   useEffect(() => {
     const interval = setInterval(() => {
       setAlertQueue((queue) => {
-        if (queue.length === 0) {
-          // Cycle back
-          return mockAlerts.slice().reverse();
-        }
-
+        if (queue.length === 0) return mockAlerts.slice().reverse();
         const newAlert = queue[0];
         const updatedQueue = queue.slice(1);
-
         setAlerts((current) => {
           const updated = [
-            {
-              ...newAlert,
-              displayTime: formatRelativeTime(newAlert.timestamp),
-              glowing: true,
-            },
+            { ...newAlert, displayTime: formatRelativeTime(newAlert.timestamp), glowing: true },
             ...current.map(a => ({ ...a, glowing: false })),
           ];
-          return updated.slice(0, 20);
+          return updated.slice(0, 15);
         });
-
         return updatedQueue;
       });
     }, 2500);
-
     return () => clearInterval(interval);
   }, []);
 
   const getAlertIcon = (type: types.AlertType) => {
     switch (type) {
-      case 'secret':
-        return <KeyRound size={14} />;
-      case 'pii':
-        return <UserX size={14} />;
-      case 'slopsquat':
-        return <Package size={14} />;
-      case 'anomaly':
-        return <Zap size={14} />;
+      case 'secret': return <KeyRound size={14} />;
+      case 'pii': return <UserX size={14} />;
+      case 'slopsquat': return <Package size={14} />;
+      case 'anomaly': return <Zap size={14} />;
     }
   };
 
   return (
-    <Card header={
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-[var(--text-primary)]">
+    <div className="glass-card rounded-2xl h-full flex flex-col overflow-hidden relative">
+      <div className="p-5 border-b border-[var(--border-subtle)] flex items-center justify-between z-10 bg-[var(--bg-1)]/50">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">
           Live Threat Feed
         </h3>
         <div className="flex items-center gap-2">
           <motion.div
-            className="w-2 h-2 bg-[var(--critical)] rounded-full"
-            animate={{ scale: [1, 1.3, 1] }}
+            className="w-1.5 h-1.5 bg-[var(--critical)] rounded-full"
+            animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
             transition={{ repeat: Infinity, duration: 1.5 }}
           />
-          <span className="text-xs font-bold text-[var(--critical)] uppercase tracking-wider">
-            Live
-          </span>
         </div>
       </div>
-    } className="relative h-[600px] flex flex-col overflow-hidden">
-      <div ref={containerRef} className="flex-1 overflow-y-auto space-y-1.5">
+      <div ref={containerRef} className="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar">
         <AnimatePresence mode="popLayout">
-          {alerts.map((alert, idx) => (
+          {alerts.map((alert) => (
             <motion.div
               key={alert.id}
               layout
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.25 }}
-              className={`flex gap-3 p-3 rounded-md border-l-4 ${
-                alert.glowing
-                  ? `bg-[var(--${alert.severity}-muted)] border-l-[var(--${alert.severity})] shadow-${alert.severity}-glow`
-                  : `bg-[var(--bg-surface)] border-l-[var(--${alert.severity})]`
-              } transition-all duration-300`}
-              style={{
-                boxShadow: alert.glowing ? `0 0 12px var(--${alert.severity}-glow)` : 'none',
-              }}
+              className={`flex gap-3 p-3 rounded-xl border-l-2 transition-all duration-300 ${alert.glowing
+                ? `bg-[var(--${alert.severity}-muted)] border-l-[var(--${alert.severity})] shadow-[var(--${alert.severity}-glow)]`
+                : `bg-[var(--bg-surface)] border-l-[var(--${alert.severity})]`
+                }`}
             >
-              {/* Severity bar indicator */}
-              <div className={`w-1 rounded-full flex-shrink-0 bg-[var(--${alert.severity})]`} />
-
-              <div className="flex-1 min-w-0 py-0.5">
-                <div className="flex items-center gap-2 mb-1">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1.5">
                   <div className={`text-[var(--${alert.severity})]`}>
                     {getAlertIcon(alert.type)}
                   </div>
-                  <Badge variant={alert.severity} className="text-xs">
-                    {alert.severity.toUpperCase()}
+                  <Badge variant={alert.severity} className="text-[10px] uppercase font-bold px-1.5 py-0">
+                    {alert.severity}
                   </Badge>
-                  <span className="text-xs text-[var(--text-tertiary)]">
+                  <span className="text-[10px] text-[var(--text-tertiary)] ml-auto">
                     {alert.displayTime}
                   </span>
                 </div>
-                <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                <p className="text-sm font-medium text-[var(--text-primary)] truncate">
                   {alert.title}
                 </p>
-                <p className="text-xs text-[var(--text-tertiary)] mt-0.5 truncate">
+                <p className="text-xs text-[var(--text-tertiary)] mt-1 truncate">
                   {alert.department} • {alert.provider}
                 </p>
               </div>
             </motion.div>
           ))}
         </AnimatePresence>
-
-        {alerts.length === 0 && (
-          <div className="flex items-center justify-center h-32 text-[var(--text-tertiary)]">
-            <p className="text-sm">Listening for live alerts...</p>
-          </div>
-        )}
       </div>
-    </Card>
-  );
-}
-
-// Models Indicator
-function ModelsActive() {
-  const providers = [
-    { name: 'GPT-4o', color: 'var(--openai)' },
-    { name: 'Claude', color: 'var(--anthropic)' },
-    { name: 'Gemini', color: 'var(--google)' },
-    { name: 'Mistral', color: 'var(--mistral)' },
-    { name: 'Local', color: 'var(--local)' },
-  ];
-
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2 items-center">
-        {providers.map((p, i) => (
-          <motion.div
-            key={p.name}
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: i * 0.06, duration: 0.3 }}
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: p.color }}
-            title={p.name}
-          />
-        ))}
-      </div>
-      <p className="text-xs text-[var(--text-secondary)]">
-        5 providers across 7 departments
-      </p>
     </div>
-  );
-}
-
-// Bottom Stats Bar
-function InsightBar() {
-  const stats = [
-    {
-      icon: TrendingUp,
-      label: 'Top Cost',
-      value: 'Engineering',
-      detail: '€18.2K',
-    },
-    {
-      icon: AlertTriangle,
-      label: 'Riskiest Model',
-      value: 'GPT-4o',
-      detail: '4.2 halluc/1K',
-    },
-    {
-      icon: EyeOff,
-      label: 'Shadow AI',
-      value: '3 providers',
-      detail: 'unapproved',
-    },
-  ];
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-        delayChildren: 0.4,
-      },
-    },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
-  };
-
-  return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      whileInView="visible"
-      className="grid grid-cols-3 gap-4"
-    >
-      {stats.map((stat) => (
-        <motion.div key={stat.label} variants={itemVariants}>
-          <Card className="group hover:shadow-lg transition-all hover:shadow-[var(--accent-glow)]">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 bg-[var(--bg-surface)] rounded-lg group-hover:bg-[var(--bg-surface-hover)] transition-colors">
-                <stat.icon size={16} className="text-[var(--accent)]" />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">
-                  {stat.label}
-                </p>
-                <p className="text-sm font-bold text-[var(--text-primary)] mt-1">
-                  {stat.value}
-                </p>
-                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-                  {stat.detail}
-                </p>
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-      ))}
-    </motion.div>
   );
 }
 
@@ -678,22 +439,12 @@ export default function Dashboard() {
 
   const pageVariants = {
     hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        duration: 0.6,
-        ease: 'easeOut',
-      },
-    },
+    visible: { opacity: 1, transition: { duration: 0.6, ease: 'easeOut' } },
   };
 
   const headerVariants = {
-    hidden: { opacity: 0, y: -20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { duration: 0.6, ease: 'easeOut' },
-    },
+    hidden: { opacity: 0, y: -10 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: 'easeOut' } },
   };
 
   return (
@@ -701,102 +452,78 @@ export default function Dashboard() {
       variants={pageVariants}
       initial="hidden"
       animate="visible"
-      className="min-h-screen bg-[var(--bg-0)] p-6 md:p-8"
+      className="h-full bg-[var(--bg-0)] p-6 md:p-8 overflow-hidden"
     >
-      <div className="max-w-[1600px] mx-auto space-y-8">
-        {/* Page Header with Scan-line Effect */}
-        <motion.div variants={headerVariants} className="relative">
-          <div className="space-y-2">
-            <div className="flex items-baseline gap-4">
-              <h1 className="text-5xl md:text-6xl font-black text-[var(--text-primary)]">
-                Command Center
-              </h1>
-              <div className="h-1 flex-1 bg-gradient-to-r from-[var(--accent)] to-transparent rounded-full" />
-            </div>
-            <div className="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
-              <span>Real-time AI usage monitoring</span>
-              <span>•</span>
-              <span className="flex items-center gap-1.5">
-                <motion.span
-                  className="w-1.5 h-1.5 bg-[var(--success)] rounded-full"
-                  animate={{ scale: [1, 1.5, 1] }}
-                  transition={{ repeat: Infinity, duration: 1.2 }}
-                />
-                Last updated: 2 min ago
+      <div className="max-w-[1600px] h-full mx-auto flex flex-col gap-6">
+        {/* Page Header */}
+        <motion.div variants={headerVariants} className="flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)]">
+              Command Center
+            </h1>
+            <div className="flex items-center gap-4 text-xs font-medium text-[var(--text-secondary)]">
+              <span className="flex items-center gap-1.5 opacity-80">
+                <span className="w-1.5 h-1.5 bg-[var(--success)] rounded-full animate-pulse" />
+                Live update
               </span>
+              <div className="flex gap-1 bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-1 rounded-md">
+                {['24h', '7d', '30d'].map((range, idx) => (
+                  <button
+                    key={range}
+                    className={`px-3 py-1 rounded transition-all ${idx === 0
+                      ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                      : 'hover:text-[var(--text-primary)]'
+                      }`}
+                  >
+                    {range}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-
-          {/* Time Range Selector */}
-          <div className="mt-4 flex gap-2">
-            {['24h', '7d', '30d', '90d'].map((range, idx) => (
-              <motion.button
-                key={range}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: idx * 0.05 }}
-                className={`px-4 py-2 rounded-md text-xs font-semibold transition-all ${
-                  idx === 0
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]'
-                }`}
-              >
-                {range}
-              </motion.button>
-            ))}
           </div>
         </motion.div>
 
-        {/* KPI Strip - 4 Premium Metric Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPICard
-            title="Total AI Cost"
-            value={metrics.totalCost}
-            format="currency"
-            trend={{ direction: 'up', percent: 12.3 }}
-            icon={DollarSign}
-            sparkline={mockCostTrend}
-            index={0}
-          />
-          <KPICard
-            title="Critical Findings"
-            value={findings.criticalCount}
-            format="plain"
-            icon={ShieldAlert}
-            badge="8 NEW"
-            index={1}
-          />
-          <ComplianceGauge score={compliance.complianceScore} index={2} />
-          <KPICard
-            title="Models Active"
-            value={5}
-            format="plain"
-            icon={Brain}
-            index={3}
-          >
-            <ModelsActive />
-          </KPICard>
-        </div>
-
-        {/* Main Grid: 2-column (7fr 5fr) + Live Feed on right */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 auto-rows-max">
-          {/* Left Column (wider) */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Threat Distribution Chart */}
-            <ThreatDistribution distribution={mockSeverityDistribution} />
-
-            {/* Recent Detections Timeline */}
-            <RecentDetections findings={mockFindings} />
+        {/* Bento Box Grid */}
+        <div className="flex-1 min-h-0 flex flex-col gap-6">
+          {/* Top Row: VIP KPIs */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 flex-shrink-0 min-h-[160px]">
+            <KPICard
+              title="Total AI Cost"
+              value={metrics.totalCost}
+              format="currency"
+              trend={{ direction: 'up', percent: 12.3 }}
+              icon={DollarSign}
+              sparkline={mockCostTrend}
+              index={0}
+            />
+            <KPICard
+              title="Critical Findings"
+              value={findings.criticalCount}
+              format="plain"
+              icon={ShieldAlert}
+              badge="8 NEW"
+              index={1}
+            />
+            <ComplianceGauge score={compliance.complianceScore} index={2} />
+            <KPICard
+              title="Models Active"
+              value={5}
+              format="plain"
+              icon={Brain}
+              index={3}
+            />
           </div>
 
-          {/* Right Column: Live Threat Feed (full height) */}
-          <div className="lg:row-span-2">
-            <LiveThreatFeed />
+          {/* Bottom Row: Charts & Feeds (Takes remaining height) */}
+          <div className="flex-1 min-h-[400px] grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 h-full glass-card rounded-2xl">
+              <ThreatDistribution distribution={mockSeverityDistribution} />
+            </div>
+            <div className="h-full">
+              <LiveThreatFeed />
+            </div>
           </div>
         </div>
-
-        {/* Bottom Insight Bar */}
-        <InsightBar />
       </div>
     </motion.div>
   );

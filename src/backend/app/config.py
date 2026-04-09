@@ -5,48 +5,29 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/hackathon"
 
-    # Redis
-    redis_url: str = "redis://localhost:6379/0"
-
-    # Neo4j
-    neo4j_uri: str = "bolt://localhost:7687"
-    neo4j_user: str = "neo4j"
-    neo4j_password: str = "hackathon"
-
-    # ChromaDB
-    chroma_host: str = "localhost"
-    chroma_port: int = 8100
-
     # Auth
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expiration_minutes: int = 60
 
-    # AI / Agent Config
-    aws_region: str = "us-west-2"
-    aws_bedrock_model_id: str = "us.anthropic.claude-sonnet-4-6"
-    openai_api_key: str = ""
-    anthropic_api_key: str = ""
+    # Model Provider — switch between gemini, ollama, openai
+    model_provider: str = "gemini"
 
     # Google Gemini
     google_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.1-flash-lite-preview"
 
-    # Rust Worker
-    rust_worker_url: str = "http://localhost:8080"
+    # Ollama (local models)
+    ollama_host: str = "http://localhost:11434"
+    ollama_model: str = "mistral"
+
+    # OpenAI (optional)
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
 
     # Security
-    cors_origins: str = "*"  # comma-separated origins, or "*" for dev
+    cors_origins: str = "*"
     rate_limit_rpm: int = 120
-    webhook_secret: str = ""
-
-    # OpenTelemetry
-    otel_enabled: bool = False  # explicit opt-in
-    otel_service_name: str = "hackathon-backend"
-    otel_exporter_endpoint: str = "http://localhost:4317"
-
-    # Scheduler
-    scheduler_enabled: bool = False  # explicit opt-in
 
     # App
     debug: bool = True

@@ -51,13 +51,10 @@ async def session() -> AsyncGenerator[AsyncSession, None]:
 
 
 class _MinimalContainer:
-    """Stub container so health endpoint doesn't crash without lifespan."""
+    """Stub container for tests — no external services."""
 
     def __init__(self, session_factory):
         self._session_factory = session_factory
-        self.redis = None
-        self.neo4j_driver = None
-        self.chroma_client = None
 
     def db_session_factory(self):
         return self._session_factory()
@@ -68,20 +65,17 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
     """Async HTTP client wired to the FastAPI app with test DB override."""
     import app.infrastructure.database as db_module
 
-    # Monkey-patch the session factory so endpoints use the test database
     original_factory = db_module.async_session_factory
     db_module.async_session_factory = test_session_factory
 
     from app.main import app
 
-    # Attach a minimal container so health endpoint works without lifespan
     app.state.container = _MinimalContainer(test_session_factory)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
-    # Restore original factory
     db_module.async_session_factory = original_factory
 
 

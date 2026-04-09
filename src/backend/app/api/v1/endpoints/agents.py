@@ -11,7 +11,7 @@ router = APIRouter()
 
 class AgentRequest(BaseModel):
     prompt: str
-    framework: AgentFramework = AgentFramework.ANTHROPIC
+    framework: AgentFramework = AgentFramework.GEMINI
     system: str = ""
 
 

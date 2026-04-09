@@ -9,7 +9,7 @@ router = APIRouter()
 
 @router.get("/health")
 async def health(request: Request):
-    """Health check — verifies connectivity to all backing services + versions."""
+    """Health check — verifies connectivity to Postgres."""
     checks = {
         "status": "ok",
         "python": sys.version.split()[0],
@@ -26,33 +26,6 @@ async def health(request: Request):
             checks["postgres"] = row.split(",")[0] if row else "ok"
     except Exception as e:
         checks["postgres"] = f"error: {e}"
-        checks["status"] = "degraded"
-
-    # Redis
-    try:
-        if container.redis:
-            info = await container.redis.info("server")
-            checks["redis"] = f"ok (v{info.get('redis_version', '?')})"
-    except Exception as e:
-        checks["redis"] = f"error: {e}"
-        checks["status"] = "degraded"
-
-    # Neo4j
-    try:
-        if container.neo4j_driver:
-            await container.neo4j_driver.verify_connectivity()
-            checks["neo4j"] = "ok"
-    except Exception as e:
-        checks["neo4j"] = f"error: {e}"
-        checks["status"] = "degraded"
-
-    # ChromaDB
-    try:
-        if container.chroma_client:
-            container.chroma_client.heartbeat()
-            checks["chroma"] = "ok"
-    except Exception as e:
-        checks["chroma"] = f"error: {e}"
         checks["status"] = "degraded"
 
     return checks

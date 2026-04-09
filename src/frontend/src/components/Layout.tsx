@@ -57,9 +57,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         animate={{ width: collapsed ? 72 : 260 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
         className="fixed left-0 top-0 h-full bg-[var(--bg-1)] border-r border-[var(--border-subtle)] flex flex-col overflow-hidden"
-        style={{
-          backgroundImage: `repeating-radial-gradient(circle at 20% 50%, rgba(99,102,241,0.03) 0, transparent 50px), repeating-radial-gradient(circle at 80% 80%, rgba(6,182,212,0.02) 0, transparent 50px)`,
-        }}
       >
         {/* Logo Area */}
         <div className="relative flex items-center justify-center h-24 border-b border-[var(--border-subtle)]">
@@ -115,7 +112,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     relative flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all
                     ${
                       isActive
-                        ? 'bg-[var(--accent-muted)] border-l-3 border-[var(--accent)] text-[var(--accent)]'
+                        ? 'bg-[var(--bg-2)] text-[var(--accent)]'
                         : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]'
                     }
                   `}
@@ -139,9 +136,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
                   {item.isPulsing && (
                     <motion.div
-                      animate={{ opacity: [0.5, 1, 0.5] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                      className="w-2 h-2 rounded-full bg-[var(--critical)] flex-shrink-0"
+                      animate={{ opacity: [0.3, 0.8, 0.3] }}
+                      transition={{ duration: 2.5, repeat: Infinity }}
+                      className="w-1.5 h-1.5 rounded-full bg-[var(--critical)] flex-shrink-0"
                     />
                   )}
 

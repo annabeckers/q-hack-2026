@@ -95,3 +95,88 @@ async def rust_process(data: str, operation: str) -> str:
                 "data": payload, "operation": operation,
             })
         return json.dumps(resp.json(), indent=2)
+
+
+# ── Hackathon-specific analysis tools ─────────────────────────────────────
+
+
+@tool_registry.register(tags=["analysis", "dashboard"])
+def get_findings_summary(finding_type: str = "") -> str:
+    """Get a summary of security findings from the analysis pipeline.
+
+    Args:
+        finding_type: Optional filter — one of: secret, pii, slopsquatting, sensitivity, complexity, trivial. Leave empty for all.
+    """
+    import json
+    from app.agents.tools import search_postgres
+
+    where = ""
+    if finding_type:
+        where = f"WHERE finding_type = '{finding_type}'"
+
+    sql = f"""
+        SELECT finding_type, severity, COUNT(*) as count
+        FROM findings {where}
+        GROUP BY finding_type, severity
+        ORDER BY count DESC
+        LIMIT 50
+    """
+    return search_postgres(sql)
+
+
+@tool_registry.register(tags=["analysis", "dashboard"])
+def get_department_risk() -> str:
+    """Get risk scores aggregated by department. Shows which departments have the most security findings."""
+    from app.agents.tools import search_postgres
+
+    sql = """
+        SELECT
+            department,
+            COUNT(*) as total_findings,
+            COUNT(*) FILTER (WHERE severity = 'critical') as critical_count,
+            COUNT(*) FILTER (WHERE severity = 'high') as high_count,
+            COUNT(*) FILTER (WHERE severity = 'medium') as medium_count,
+            COUNT(*) FILTER (WHERE severity = 'low') as low_count
+        FROM findings
+        GROUP BY department
+        ORDER BY critical_count DESC, high_count DESC
+        LIMIT 20
+    """
+    return search_postgres(sql)
+
+
+@tool_registry.register(tags=["analysis", "dashboard"])
+def get_recent_secrets(limit: int = 20) -> str:
+    """Get the most recent secrets and PII findings detected in AI conversations.
+
+    Args:
+        limit: Number of recent findings to return. Default 20.
+    """
+    from app.agents.tools import search_postgres
+
+    sql = f"""
+        SELECT finding_type, severity, snippet, source_file, created_at
+        FROM findings
+        WHERE finding_type IN ('secret', 'pii')
+        ORDER BY created_at DESC
+        LIMIT {min(limit, 100)}
+    """
+    return search_postgres(sql)
+
+
+@tool_registry.register(tags=["analysis", "dashboard"])
+def get_chat_stats() -> str:
+    """Get overall statistics about imported AI chat conversations — total count, models used, sources."""
+    from app.agents.tools import search_postgres
+
+    sql = """
+        SELECT
+            COUNT(*) as total_chats,
+            COUNT(DISTINCT source) as source_count,
+            COUNT(DISTINCT model) as model_count,
+            MIN(created_at) as earliest,
+            MAX(created_at) as latest
+        FROM chats
+    """
+    return search_postgres(sql)
+

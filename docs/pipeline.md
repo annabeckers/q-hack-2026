@@ -103,6 +103,8 @@ Populated by all analyzers. One row per finding per message.
 
 ## Materialized Views — Frontend Read Layer
 
+**Why views, not separate tables?** Materialized views are *defined* by their source query — correctness is guaranteed by construction. A separate summary table would require manual `TRUNCATE + INSERT` logic that duplicates the query and introduces sync bugs. Since the dashboard is batch-refreshed (not real-time), `REFRESH MATERIALIZED VIEW CONCURRENTLY` gives us atomic, zero-downtime updates with no extra application code. Performance after refresh is identical — both are just stored rows on disk.
+
 Refreshed via `SELECT refresh_dashboard_views()` after each worker run. Read-only from the frontend. Instant queries — no joins at request time.
 
 | View | API endpoint | Purpose |

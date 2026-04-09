@@ -14,15 +14,11 @@ def validate_environment() -> list[str]:
     if "change-me" in settings.database_url or not settings.database_url:
         warnings.append("DATABASE_URL is not configured")
 
-    # At least one AI provider should be configured
-    ai_configured = any([
-        settings.openai_api_key,
-        settings.anthropic_api_key,
-        settings.google_api_key,
-        settings.aws_bedrock_model_id != "us.anthropic.claude-sonnet-4-6",
-    ])
-    if not ai_configured:
-        warnings.append("No AI provider API key configured — agents will fail")
+    # LLM provider check
+    if settings.model_provider == "gemini" and not settings.google_api_key:
+        warnings.append("MODEL_PROVIDER=gemini but GOOGLE_API_KEY is not set — agents will fail")
+    elif settings.model_provider == "openai" and not settings.openai_api_key:
+        warnings.append("MODEL_PROVIDER=openai but OPENAI_API_KEY is not set — agents will fail")
 
     # CORS should not be wildcard in production
     if settings.cors_origins == "*" and not settings.debug:
@@ -36,13 +32,9 @@ def validate_environment() -> list[str]:
 
 def log_startup_info() -> None:
     """Log configuration summary at startup."""
-    db_type = "postgresql"
     log.info(
         "startup",
-        database=db_type,
-        redis=bool(settings.redis_url),
-        neo4j=bool(settings.neo4j_uri),
-        chroma=f"{settings.chroma_host}:{settings.chroma_port}",
-        scheduler=settings.scheduler_enabled,
+        database="postgresql",
+        model_provider=settings.model_provider,
         debug=settings.debug,
     )

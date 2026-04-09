@@ -24,11 +24,3 @@ async def test_upload_unsupported_extension_returns_400(client: AsyncClient):
         files={"file": ("hack.exe", io.BytesIO(b"binary"), "application/octet-stream")},
     )
     assert response.status_code == 400
-
-
-async def test_metrics_returns_uptime(client: AsyncClient):
-    response = await client.get("/api/v1/metrics")
-    assert response.status_code == 200
-    data = response.json()
-    assert "uptime_seconds" in data
-    assert isinstance(data["uptime_seconds"], (int, float))
