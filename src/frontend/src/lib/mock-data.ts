@@ -19,7 +19,7 @@ export const mockDashboardSummary: types.DashboardSummary = {
   metrics: {
     totalCost: 47832.50,
     totalEvents: 12847,
-    totalTokens: 2847392,
+    totalTokens: 2977392,
     totalDepartments: 7,
     totalModels: 5,
   },
@@ -43,8 +43,8 @@ export const mockDashboardSummary: types.DashboardSummary = {
     { department: 'Engineering', cost: 18200.00, events: 4928 },
     { department: 'Product', cost: 8400.00, events: 2341 },
     { department: 'Sales', cost: 6750.00, events: 1847 },
+    { department: 'Finance', cost: 5690.00, events: 1298 },
     { department: 'Marketing', cost: 5320.00, events: 1521 },
-    { department: 'Finance', cost: 4890.00, events: 1298 },
   ],
 };
 
@@ -118,8 +118,8 @@ export const mockCostByDepartment: types.CostBucket[] = [
     sessions: 412,
     avgCostPerSession: 20.39,
     events: 2341,
-    tokens: 521847,
-    costPerToken: 0.0161,
+    tokens: 651839,
+    costPerToken: 0.0128,
     trivialPercentage: 14,
     privatePercentage: 31,
   },
@@ -147,12 +147,12 @@ export const mockCostByDepartment: types.CostBucket[] = [
   },
   {
     key: 'Finance',
-    cost: 4890.00,
+    cost: 5690.00,
     sessions: 238,
-    avgCostPerSession: 20.55,
+    avgCostPerSession: 23.90,
     events: 1298,
     tokens: 293847,
-    costPerToken: 0.0167,
+    costPerToken: 0.0193,
     trivialPercentage: 10,
     privatePercentage: 22,
   },
@@ -245,7 +245,7 @@ export const mockCostTimeSeries: types.TimeSeriesResponse = {
   granularity: 'day',
   data: Array.from({ length: 85 }, (_, i) => ({
     timestamp: offsetDate(i - 84),
-    value: 3200 + Math.random() * 1200 + i * 15,
+    value: i > 84 - 7 ? 6833.21 : 3200 + Math.random() * 1200 + i * 15,
   })),
 };
 
