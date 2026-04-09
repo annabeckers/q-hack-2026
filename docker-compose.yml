@@ -15,6 +15,7 @@ services:
       - ./src/backend:/app
       - ./config:/config:ro
       - /app/.venv
+      - ./resources/data:/data
     depends_on:
       postgres:
         condition: service_healthy

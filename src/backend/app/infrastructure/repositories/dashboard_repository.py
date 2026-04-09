@@ -26,19 +26,7 @@ SECRET_PATTERNS: dict[str, tuple[re.Pattern[str], str]] = {
 
 
 def _project_root() -> Path:
-    """Get project root directory. Works both in dev and Docker."""
-    # In Docker, the app is at /app
-    # In dev, we need to go up from src/backend/app/infrastructure/repositories/
-    current = Path(__file__).resolve()
-    # Try to find the project root by looking for known files
-    for parent in current.parents:
-        if (parent / "pyproject.toml").exists() or (parent / "docker-compose.yml").exists():
-            return parent
-        # Stop at filesystem root
-        if parent == parent.parent:
-            break
-    # Fallback: return current working directory
-    return Path("/app") if Path("/app").exists() else Path.cwd()
+    return Path(settings.data_root)
 
 
 def _parse_timestamp(value: Any) -> datetime | None:

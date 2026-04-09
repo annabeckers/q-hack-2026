@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
     rate_limit_rpm: int = 120
 
+    # Data
+    data_root: str = "/data"
+
     # App
     debug: bool = True
     log_level: str = "INFO"

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 
 from app.infrastructure.database import async_session_factory
-from app.api.dependencies import get_current_user
+from app.auth.jwt import get_current_user
 
 router = APIRouter()
 
