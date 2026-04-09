@@ -19,6 +19,8 @@ import Badge from '@/components/ui/Badge';
 import CountUp from '@/components/ui/CountUp';
 
 import { mockModelMetrics, mockScatterPoints } from '@/lib/mock-data';
+import { apiClient } from '@/lib/api';
+import { useApiCall } from '@/hooks/useApiCall';
 import { ModelMetrics } from '@/lib/types';
 
 const providerColors: Record<string, string> = {
@@ -112,9 +114,33 @@ function ModelUsageCard({ metric, index }: ModelCardProps) {
 }
 
 export default function ModelAnalytics() {
-  const models = mockModelMetrics.slice(0, 5);
   const headerRef = useRef(null);
   const headerInView = useInView(headerRef, { once: true });
+
+  // ── API calls with mock fallback ──
+  const { data: modelMetrics, loading: l1 } = useApiCall(
+    () => apiClient.getModelComparison(),
+    mockModelMetrics
+  );
+
+  const { data: scatterPoints, loading: l2 } = useApiCall(
+    () => apiClient.getComplexityScatter(),
+    mockScatterPoints
+  );
+
+  const models = modelMetrics.slice(0, 5);
+
+  if (l1 || l2) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#1e3a8a] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Ensure robust provider list for Risk Map
+  const colorPalette = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ef5350', '#06b6d4', '#ec4899'];
+  const riskMapProviders = Array.from(new Set(scatterPoints.map((p) => p.provider)));
 
   return (
     <motion.div
@@ -199,12 +225,12 @@ export default function ModelAnalytics() {
                     }}
                   />
                   <Legend wrapperStyle={{ color: 'var(--text-secondary)' }} />
-                  {Object.entries(providerColors).map(([provider, color]) => (
+                  {riskMapProviders.map((provider, i) => (
                     <Scatter
                       key={provider}
                       name={provider}
-                      data={mockScatterPoints.filter((p) => p.provider === provider)}
-                      fill={color}
+                      data={scatterPoints.filter((p) => p.provider === provider)}
+                      fill={colorPalette[i % colorPalette.length]}
                       fillOpacity={0.7}
                     />
                   ))}

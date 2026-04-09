@@ -27,6 +27,8 @@ import {
   mockDashboardSummary,
   mockRecommendations,
 } from '@/lib/mock-data';
+import { apiClient } from '@/lib/api';
+import { useApiCall } from '@/hooks/useApiCall';
 import type * as types from '@/lib/types';
 
 const MODEL_COLORS: Record<string, string> = {
@@ -43,22 +45,59 @@ export default function CostIntelligence() {
   const headerRef = useRef(null);
   const headerInView = useInView(headerRef, { once: true });
 
-  const totalCost = mockDashboardSummary.metrics.totalCost;
+  // ── API calls with mock fallback ──
+  const { data: summaryData, loading: l1 } = useApiCall(
+    () => apiClient.getDashboardSummary(timeRange),
+    mockDashboardSummary,
+    [timeRange]
+  );
 
-  const costByDeptData = mockCostByDepartment.map((dept) => ({
+  const { data: costByDeptRaw, loading: l2 } = useApiCall(
+    () => apiClient.getCostAnalytics('department').then(r => {
+      if (Array.isArray(r)) return r as types.CostBucket[];
+      if (r && 'items' in r) return (r as any).items as types.CostBucket[];
+      return mockCostByDepartment;
+    }),
+    mockCostByDepartment
+  );
+
+  const { data: costByModelRaw, loading: l3 } = useApiCall(
+    () => apiClient.getCostAnalytics('model').then(r => {
+      if (Array.isArray(r)) return r as types.CostBucket[];
+      if (r && 'items' in r) return (r as any).items as types.CostBucket[];
+      return mockCostByModel;
+    }),
+    mockCostByModel
+  );
+
+  const { data: costTimeSeriesRaw, loading: l4 } = useApiCall(
+    () => apiClient.getTimeSeries('cost', 'day'),
+    mockCostTimeSeries
+  );
+
+  const { data: recommendations, loading: l5 } = useApiCall(
+    () => apiClient.getRecommendations(),
+    mockRecommendations
+  );
+
+  const totalCost = summaryData?.metrics?.totalCost ?? mockDashboardSummary.metrics.totalCost;
+
+  const costByDeptData = costByDeptRaw.map((dept) => ({
     name: dept.key,
     cost: Math.round(dept.cost),
   })).sort((a, b) => b.cost - a.cost);
 
-  const costByModelData = mockCostByModel.map((model) => ({
+  const costByModelData = costByModelRaw.map((model) => ({
     name: model.key,
     cost: Math.round(model.cost),
   }));
 
-  const costTrendData = mockCostTimeSeries.data.slice(-30).map((point) => ({
-    date: new Date(point.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    cost: Math.round(point.value),
-    timestamp: point.timestamp,
+  // Normalize time series — backend may return { data: [...] } or { metric, data }
+  const timeSeriesData = (costTimeSeriesRaw as any)?.data ?? costTimeSeriesRaw;
+  const costTrendData = (Array.isArray(timeSeriesData) ? timeSeriesData : []).slice(-30).map((point: any) => ({
+    date: new Date(point.timestamp ?? point.date ?? '').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    cost: Math.round(point.value ?? point.cost ?? 0),
+    timestamp: point.timestamp ?? point.date,
   }));
 
   const departmentBudgets = [
@@ -73,7 +112,7 @@ export default function CostIntelligence() {
     return 'success';
   };
 
-  const recommendations = mockRecommendations
+  const costRecs = recommendations
     .filter((rec) => rec.category === 'cost_optimization')
     .slice(0, 4);
 
@@ -81,6 +120,14 @@ export default function CostIntelligence() {
     setShowExport(true);
     setTimeout(() => setShowExport(false), 3000);
   };
+
+  if (l1 || l2 || l3 || l4 || l5) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#1e3a8a] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -181,9 +228,11 @@ export default function CostIntelligence() {
                     paddingAngle={3}
                     dataKey="cost"
                   >
-                    {costByModelData.map((entry) => (
-                      <Cell key={entry.name} fill={MODEL_COLORS[entry.name] || '#666'} />
-                    ))}
+                    {costByModelData.map((entry, index) => {
+                      const colorPalette = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ef5350', '#06b6d4', '#ec4899'];
+                      const fallbackColor = colorPalette[index % colorPalette.length];
+                      return <Cell key={entry.name} fill={MODEL_COLORS[entry.name] || fallbackColor} />;
+                    })}
                   </Pie>
                   <Tooltip
                     contentStyle={{
@@ -202,7 +251,7 @@ export default function CostIntelligence() {
                     <div key={item.name} className="flex items-center gap-2">
                       <div
                         className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: MODEL_COLORS[item.name] || '#666' }}
+                        style={{ backgroundColor: MODEL_COLORS[item.name] || ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ef5350', '#06b6d4', '#ec4899'][costByModelData.findIndex(x => x.name === item.name) % 7] }}
                       />
                       <span className="text-[var(--text-secondary)] truncate">{item.name}</span>
                       <span className="text-[var(--text-tertiary)] ml-auto">{percentage}%</span>
@@ -317,7 +366,7 @@ export default function CostIntelligence() {
         <div>
           <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">Cost Optimization Opportunities</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {recommendations.map((rec, idx) => (
+            {costRecs.map((rec, idx) => (
               <motion.div
                 key={rec.id}
                 initial={{ opacity: 0, y: 20 }}
