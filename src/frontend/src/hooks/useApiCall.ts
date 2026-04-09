@@ -21,7 +21,9 @@ export function useApiCall<T>(
   error: Error | null;
   refetch: () => Promise<void>;
 } {
-  const cacheKey = apiFn.toString() + JSON.stringify(deps);
+  // Extract a stable name from the function source so different calls get different keys,
+  // and include deps so changing e.g. timeRange busts the cache for that entry.
+  const cacheKey = apiFn.toString().slice(0, 120) + '|' + JSON.stringify(deps);
   const cachedData = apiCache.get(cacheKey);
 
   const [data, setData] = useState<T>(cachedData !== undefined ? cachedData : mockFallback);
