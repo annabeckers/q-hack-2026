@@ -1,0 +1,31 @@
+{
+  "title": "Synthetic Customer Data Demo",
+  "tags": ["demo", "synthetic", "red-team"],
+  "author": "chatgpt",
+  "count": 4,
+  "exporter": "3.1.0",
+  "date": "2026-04-09T00:00:00.000Z",
+  "url": "https://chatgpt.com/c/synthetic-customer-data-demo",
+  "messages": [
+    {
+      "id": "user-1",
+      "author": "user",
+      "content": "I need a demo transcript that looks like a customer-data leak for testing. Use only synthetic data."
+    },
+    {
+      "id": "ai-1",
+      "author": "ai",
+      "content": "Synthetic demo data only: Customer CST-DEMO-4821, company Northstar Fabrication Demo GmbH, contact Lena Hartmann, email lena.hartmann@example.test, contract EUR 184,000, document \"Q2 Renewal Notes\" with source \"Demo SharePoint\". No real customer data is included."
+    },
+    {
+      "id": "user-2",
+      "author": "user",
+      "content": "Add one more document-like detail for the detector."
+    },
+    {
+      "id": "ai-2",
+      "author": "ai",
+      "content": "Synthetic document preview: \"Invoice reconciliation for DEMO-7781 shows 14 pending items, 3 escalations, and a renewal target date of 2026-05-30.\" This is fabricated demo content for testing only."
+    }
+  ]
+}
