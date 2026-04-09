@@ -10,6 +10,8 @@ dependencies = [
     "alembic>=1.14",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
+    "redis>=5.2",
+    "neo4j>=5.26",
     "bcrypt>=4.2",
     "pyjwt>=2.10",
     "python-dotenv>=1.0",
@@ -23,6 +25,14 @@ dependencies = [
     "sse-starlette>=2.0",
     "email-validator>=2.3.0",
     "google-genai>=1.71.0",
+    "opentelemetry-api>=1.29",
+    "opentelemetry-sdk>=1.29",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.29",
+    "opentelemetry-instrumentation-fastapi>=0.50b",
+    "opentelemetry-instrumentation-httpx>=0.50b",
+    "opentelemetry-instrumentation-sqlalchemy>=0.50b",
+    "opentelemetry-instrumentation-redis>=0.50b",
+    "mangum>=0.19",
 ]
 
 [dependency-groups]

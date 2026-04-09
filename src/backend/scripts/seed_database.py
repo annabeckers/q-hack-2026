@@ -11,10 +11,10 @@ from app.infrastructure.database import async_session_factory
 from app.infrastructure.mapping import start_mappers
 
 
-COSTUMERS = [
+CUSTOMERS = [
     {
         "id": "00000000-0000-4000-8000-000000000001",
-        "costumer_code": "CST-2001",
+        "customer_code": "CST-2001",
         "company_name": "Northwind Retail GmbH",
         "contact_name": "Emma Clark",
         "email": "emma.clark@northstar-industries.com",
@@ -24,7 +24,7 @@ COSTUMERS = [
     },
     {
         "id": "00000000-0000-4000-8000-000000000002",
-        "costumer_code": "CST-2002",
+        "customer_code": "CST-2002",
         "company_name": "Alpine Components AG",
         "contact_name": "Liam Nguyen",
         "email": "liam.nguyen@northstar-industries.com",
@@ -34,7 +34,7 @@ COSTUMERS = [
     },
     {
         "id": "00000000-0000-4000-8000-000000000003",
-        "costumer_code": "CST-2003",
+        "customer_code": "CST-2003",
         "company_name": "Helios Medical Supplies",
         "contact_name": "Sofia Rossi",
         "email": "sofia.rossi@northstar-industries.com",
@@ -115,11 +115,11 @@ async def seed() -> None:
     """Load deterministic mock records into PostgreSQL."""
     start_mappers()
 
-    create_costumers_table_sql = text(
+    create_customers_table_sql = text(
         """
-        CREATE TABLE IF NOT EXISTS costumers (
+        CREATE TABLE IF NOT EXISTS customers (
             id UUID PRIMARY KEY,
-            costumer_code VARCHAR(30) UNIQUE NOT NULL,
+            customer_code VARCHAR(30) UNIQUE NOT NULL,
             company_name VARCHAR(255) NOT NULL,
             contact_name VARCHAR(255) NOT NULL,
             email VARCHAR(255) UNIQUE,
@@ -151,11 +151,11 @@ async def seed() -> None:
         """
     )
 
-    costumer_sql = text(
+    customer_sql = text(
         """
-        INSERT INTO costumers (
+        INSERT INTO customers (
             id,
-            costumer_code,
+            customer_code,
             company_name,
             contact_name,
             email,
@@ -167,7 +167,7 @@ async def seed() -> None:
         )
         VALUES (
             CAST(:id AS uuid),
-            :costumer_code,
+            :customer_code,
             :company_name,
             :contact_name,
             :email,
@@ -177,7 +177,7 @@ async def seed() -> None:
             NOW(),
             NOW()
         )
-        ON CONFLICT (costumer_code)
+        ON CONFLICT (customer_code)
         DO UPDATE SET
             company_name = EXCLUDED.company_name,
             contact_name = EXCLUDED.contact_name,
@@ -250,11 +250,11 @@ async def seed() -> None:
 
     async with async_session_factory() as session:
         async with session.begin():
-            await session.execute(create_costumers_table_sql)
+            await session.execute(create_customers_table_sql)
             await session.execute(create_employees_table_sql)
 
-            for costumer in COSTUMERS:
-                await session.execute(costumer_sql, costumer)
+            for customer in CUSTOMERS:
+                await session.execute(customer_sql, customer)
 
             for employee in EMPLOYEES:
                 await session.execute(employee_sql, employee)
@@ -264,7 +264,7 @@ async def seed() -> None:
 
     print(
         "Seeded/updated "
-        f"{len(COSTUMERS)} costumers, "
+        f"{len(CUSTOMERS)} customers, "
         f"{len(EMPLOYEES)} employees, "
         f"and {len(DOCUMENTS)} documents."
     )

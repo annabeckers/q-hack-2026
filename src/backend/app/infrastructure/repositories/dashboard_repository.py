@@ -26,7 +26,19 @@ SECRET_PATTERNS: dict[str, tuple[re.Pattern[str], str]] = {
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parents[5]
+    """Get project root directory. Works both in dev and Docker."""
+    # In Docker, the app is at /app
+    # In dev, we need to go up from src/backend/app/infrastructure/repositories/
+    current = Path(__file__).resolve()
+    # Try to find the project root by looking for known files
+    for parent in current.parents:
+        if (parent / "pyproject.toml").exists() or (parent / "docker-compose.yml").exists():
+            return parent
+        # Stop at filesystem root
+        if parent == parent.parent:
+            break
+    # Fallback: return current working directory
+    return Path("/app") if Path("/app").exists() else Path.cwd()
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
@@ -218,6 +230,11 @@ def _load_conversations(root: str) -> tuple[ConversationRecord, ...]:
 
 
 def _load_persisted_findings() -> tuple[FindingRecord, ...] | None:
+    """Load findings from materialized view (fast, pre-computed).
+    
+    Uses mv_deterministic_top_matches for critical/high findings
+    and mv_deterministic_conversations for aggregated data.
+    """
     try:
         import psycopg2
 
@@ -227,32 +244,29 @@ def _load_persisted_findings() -> tuple[FindingRecord, ...] | None:
 
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
+                # Check if materialized views exist and have data
                 cur.execute(
-                    """
-                    SELECT id FROM deterministic_analysis_runs
-                    ORDER BY completed_at DESC
-                    LIMIT 1
-                    """
+                    "SELECT COUNT(*) FROM pg_matviews WHERE matviewname = 'mv_deterministic_top_matches'"
                 )
-                latest_run = cur.fetchone()
-                if not latest_run:
+                if cur.fetchone()[0] == 0:
                     return None
 
+                # Query from materialized view (fast, no joins at query time)
                 cur.execute(
                     """
                     SELECT
                         id, department, source_file, conversation_key, conversation_title, provider,
-                        model_name, message_id, message_timestamp, author, role, source_field,
-                        company_rule_id, company_label, company_category, company_source_table,
-                        company_source_field, matched_text, match_context, severity, confidence
-                    FROM deterministic_chat_matches
-                    WHERE analysis_run_id = %s
-                    ORDER BY conversation_key, message_timestamp NULLS LAST, message_id
-                    """,
-                    (latest_run[0],),
+                        model_name, message_id, message_timestamp, author, role,
+                        company_label, category, company_source_table, company_source_field,
+                        matched_text, match_context, severity, confidence, created_at
+                    FROM mv_deterministic_top_matches
+                    ORDER BY severity DESC, created_at DESC
+                    LIMIT 500
+                    """
                 )
                 rows = cur.fetchall()
     except Exception:
+        # Fallback: return empty if views not ready
         return None
 
     if not rows:
@@ -260,33 +274,35 @@ def _load_persisted_findings() -> tuple[FindingRecord, ...] | None:
 
     findings: list[FindingRecord] = []
     for row in rows:
-        finding_type = "pii" if row[14] == "pii" else "secret"
+        # Map category to finding type
+        finding_type = "pii" if row[12] == "pii" else "secret"
         provider = _normalize_family(row[5])
         model_name = _normalize_family(row[6] or row[5])
         findings.append(
             FindingRecord(
                 id=row[0],
                 type=finding_type,
-                severity=row[19],
-                category=row[14],
+                severity=row[17],
+                category=row[12],
                 model=model_name,
                 provider=provider,
                 conversation_id=row[3],
                 message_id=row[7],
                 role=row[10],
                 timestamp=row[8] or datetime.now(timezone.utc),
-                match_value=row[17],
-                match_context=row[18],
-                source_field=row[11],
-                confidence=float(row[20]),
+                match_value=row[15],
+                match_context=row[16],
+                source_field="user_text_clean",
+                confidence=float(row[18]),
                 department=row[1],
                 status="open",
                 notes=None,
                 extra={
-                    "companyLabel": row[13],
-                    "companyCategory": row[14],
-                    "companySourceTable": row[15],
-                    "companySourceField": row[16],
+                    "companyLabel": row[11],
+                    "companyCategory": row[12],
+                    "companySourceTable": row[13],
+                    "companySourceField": row[14],
+                    "analysisRunAt": row[19],
                 },
             )
         )
@@ -299,7 +315,11 @@ class DashboardRepository:
         self._root = root or _project_root()
         self._status_overrides: dict[str, tuple[str, str | None]] = {}
 
-    def list_usage_records(self) -> list[UsageRecord]:
+    def list_usage_records(self, *, raise_on_missing: bool = False) -> list[UsageRecord]:
+        if raise_on_missing:
+            path = Path(self._root) / "logs.jsonl"
+            if not path.exists():
+                raise FileNotFoundError(f"Data source not found: {path}")
         return list(_load_usage_records(str(self._root)))
 
     def list_conversations(self) -> list[ConversationRecord]:

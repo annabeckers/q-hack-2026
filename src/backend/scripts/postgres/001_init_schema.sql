@@ -15,9 +15,9 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS ix_users_email ON users (email);
 
-CREATE TABLE IF NOT EXISTS costumers (
+CREATE TABLE IF NOT EXISTS customers (
     id UUID PRIMARY KEY,
-    costumer_code VARCHAR(30) UNIQUE NOT NULL,
+    customer_code VARCHAR(30) UNIQUE NOT NULL,
     company_name VARCHAR(255) NOT NULL,
     contact_name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE,

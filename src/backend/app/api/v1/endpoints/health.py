@@ -28,4 +28,22 @@ async def health(request: Request):
         checks["postgres"] = f"error: {e}"
         checks["status"] = "degraded"
 
+    # Redis
+    try:
+        if container.redis:
+            info = await container.redis.info("server")
+            checks["redis"] = f"ok (v{info.get('redis_version', '?')})"
+    except Exception as e:
+        checks["redis"] = f"error: {e}"
+        checks["status"] = "degraded"
+
+    # Neo4j
+    try:
+        if container.neo4j_driver:
+            await container.neo4j_driver.verify_connectivity()
+            checks["neo4j"] = "ok"
+    except Exception as e:
+        checks["neo4j"] = f"error: {e}"
+        checks["status"] = "degraded"
+
     return checks

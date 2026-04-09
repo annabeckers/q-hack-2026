@@ -1,0 +1,67 @@
+# Deterministic Analysis Rules Configuration
+# Defines how company data fields are categorized and severity-ranked
+
+# Category assignment rules
+category_rules:
+  # By source table (default category for all fields in table)
+  by_table:
+    documents: secret
+    employees: secret
+    customers: secret
+
+  # By field name (overrides table default)
+  by_field:
+    # PII fields
+    full_name: pii
+    manager_name: pii
+    company_name: pii
+    contact_name: pii
+    email: pii
+
+# Severity assignment rules (highest matching rule wins)
+severity_rules:
+  # Priority 1: Field name overrides (applies regardless of table)
+  by_field:
+    email: critical
+    annual_contract_value_eur: critical
+    content_preview: critical
+
+  # Priority 2: Table + field combinations (default severity)
+  by_table_field:
+    customers:
+      company_name: high
+      contact_name: high
+      email: critical
+      customer_code: high
+      segment: medium
+      annual_contract_value_eur: critical
+    employees:
+      employee_number: high
+      full_name: high
+      department: medium
+      job_title: medium
+      manager_name: high
+    documents:
+      title: medium
+      source: medium
+      source_type: low
+      content_preview: critical
+      metadata_json: medium
+
+  # Priority 3: Default severity for any unmatched field
+  default: medium
+
+# Department inference keywords
+# Maps keywords in conversation text/title to department names
+department_keywords:
+  finance: [budget, forecast, invoice, payment, financial, finance]
+  engineering: [code, debug, test, deploy, production]
+  security: [security, rbac, mailbox, postfach]
+  hr: [employee, onboarding, bewerbung, cv]
+  legal: [contract, vertrag, legal]
+  sales: [sales, offer, lead, angebot]
+  support: [support, ticket]
+  marketing: [marketing, content, copy]
+  product: [roadmap, product]
+  operations: [operations, capex, factory]
+  data: [analysis, report, kpi]

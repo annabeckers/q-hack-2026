@@ -35,6 +35,8 @@ def log_startup_info() -> None:
     log.info(
         "startup",
         database="postgresql",
+        redis=bool(settings.redis_url),
+        neo4j=bool(settings.neo4j_uri),
         model_provider=settings.model_provider,
         debug=settings.debug,
     )

@@ -72,6 +72,3 @@ app.include_router(autonomous_router, prefix="/api/v1/autonomous", tags=["autono
 app.include_router(slopsquatting_router, prefix="/api/v1/slopsquatting", tags=["slopsquatting"])
 app.include_router(recommendations_router, prefix="/api/v1/recommendations", tags=["recommendations"])
 
-# GraphQL (optional — uncomment to enable GraphiQL at /graphql)
-# from app.api.graphql import graphql_router
-# app.include_router(graphql_router, prefix="/graphql")

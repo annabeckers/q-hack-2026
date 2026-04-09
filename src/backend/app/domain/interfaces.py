@@ -1,6 +1,7 @@
 """Abstract interfaces — domain contracts for infrastructure."""
 
 from abc import ABC, abstractmethod
+from typing import Any
 from uuid import UUID
 
 from app.domain.analysis import ChatMessageRecord, CompanyReferenceRule, ConversationSummaryRecord, DeterministicMatchRecord
@@ -81,3 +82,28 @@ class AbstractDeterministicAnalysisRepository(ABC):
 
     @abstractmethod
     async def save_summaries(self, summaries: list[ConversationSummaryRecord]) -> None: ...
+
+    @abstractmethod
+    async def refresh_materialized_views(self) -> None: ...
+
+    # Materialized view query methods
+    @abstractmethod
+    async def get_overview_stats(self) -> dict[str, Any] | None: ...
+
+    @abstractmethod
+    async def get_conversations_from_view(
+        self, 
+        department: str | None = None,
+        provider: str | None = None,
+        severity: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    async def get_top_matches_from_view(
+        self,
+        department: str | None = None,
+        severity: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...

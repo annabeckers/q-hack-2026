@@ -55,6 +55,8 @@ class _MinimalContainer:
 
     def __init__(self, session_factory):
         self._session_factory = session_factory
+        self.redis = None
+        self.neo4j_driver = None
 
     def db_session_factory(self):
         return self._session_factory()
