@@ -15,7 +15,21 @@ import structlog
 import yaml
 
 logger = structlog.get_logger(__name__)
-_CONFIG_PATH = Path(__file__).resolve().parents[4] / "config" / "apis.yaml"
+
+
+def _find_config_path() -> Path:
+    """Search upward from this file for config/apis.yaml."""
+    current = Path(__file__).resolve().parent
+    for _ in range(10):
+        candidate = current / "config" / "apis.yaml"
+        if candidate.exists():
+            return candidate
+        current = current.parent
+    # Fallback — won't exist, but APIClientFactory handles missing configs lazily
+    return Path("/config/apis.yaml")
+
+
+_CONFIG_PATH = _find_config_path()
 
 
 class APIClient:
