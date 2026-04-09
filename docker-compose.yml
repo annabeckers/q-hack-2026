@@ -9,8 +9,6 @@ services:
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/hackathon
-      - REDIS_URL=redis://redis:6379/0
-      - NEO4J_URI=bolt://neo4j:7687
     volumes:
       - ./src/backend:/app
       - ./config:/config:ro
@@ -37,8 +35,6 @@ services:
       - /app/.venv
     depends_on:
       postgres:
-        condition: service_healthy
-      neo4j:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "test", "-f", "/tmp/worker-healthy"]
@@ -78,44 +74,8 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - hackathon-net
-    restart: unless-stopped
-
-  neo4j:
-    image: neo4j:5-community
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    environment:
-      NEO4J_AUTH: neo4j/hackathon
-      NEO4J_PLUGINS: '["apoc"]'
-    volumes:
-      - neo4j-data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
-      interval: 10s
       timeout: 10s
-      retries: 5
-      start_period: 30s
-    networks:
-      - hackathon-net
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      retries: 10
     networks:
       - hackathon-net
     restart: unless-stopped
@@ -127,15 +87,12 @@ services:
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/hackathon
-      - NEO4J_URI=bolt://neo4j:7687
     volumes:
       - ./src/dataloader:/app
       - ./resources/data:/data
       - /app/.venv
     depends_on:
       postgres:
-        condition: service_healthy
-      neo4j:
         condition: service_healthy
     networks:
       - hackathon-net
@@ -144,8 +101,6 @@ services:
 
 volumes:
   postgres-data:
-  neo4j-data:
-  redis-data:
   prometheus-data:
   grafana-data:
 

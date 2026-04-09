@@ -4,6 +4,7 @@ Usage: uv run python scripts/seed_database.py
 """
 
 import asyncio
+from datetime import datetime, timezone
 
 from sqlalchemy import text
 
@@ -82,7 +83,7 @@ EMPLOYEES = [
         "bonus_target_pct": 12.5,
         "manager_name": "Emma Clark",
         "is_active": True,
-        "hired_at": "2022-03-01T00:00:00Z",
+        "hired_at": datetime(2022, 3, 1, tzinfo=timezone.utc),
     },
     {
         "id": "00000000-0000-4000-8000-000000000302",
@@ -94,7 +95,7 @@ EMPLOYEES = [
         "bonus_target_pct": 10.0,
         "manager_name": "Noah Bauer",
         "is_active": True,
-        "hired_at": "2021-11-15T00:00:00Z",
+        "hired_at": datetime(2021, 11, 15, tzinfo=timezone.utc),
     },
     {
         "id": "00000000-0000-4000-8000-000000000303",
@@ -106,7 +107,7 @@ EMPLOYEES = [
         "bonus_target_pct": 8.0,
         "manager_name": "Sofia Rossi",
         "is_active": True,
-        "hired_at": "2023-01-09T00:00:00Z",
+        "hired_at": datetime(2023, 1, 9, tzinfo=timezone.utc),
     },
 ]
 
