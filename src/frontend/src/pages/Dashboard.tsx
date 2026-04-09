@@ -24,6 +24,7 @@ import {
   mockSeverityDistribution,
   mockAlerts,
   mockFindings,
+  mockComplianceScore,
 } from '../lib/mock-data';
 import { apiClient } from '../lib/api';
 import { useApiCall } from '../hooks/useApiCall';
@@ -407,47 +408,63 @@ function InsightBar() {
 // ═══════════════════════════════════════════
 // MAIN DASHBOARD
 // ═══════════════════════════════════════════
+const TIME_RANGE_MAP = ['day', 'week', 'month', 'quarter'] as const;
+type DashTimeRange = typeof TIME_RANGE_MAP[number];
+
 export default function Dashboard() {
-  // ── API calls with mock fallback ──
+  const [activeRange, setActiveRange] = useState(0);
+  const timeRange: DashTimeRange = TIME_RANGE_MAP[activeRange];
+  const costTrend = [1.2, 1.5, 1.8, 2.1, 2.4, 2.8, 3.1, 2.9];
+
+  // ── API calls — all re-fetch when timeRange changes ──
   const { data: summaryData, loading: l1 } = useApiCall(
-    () => apiClient.getDashboardSummary(),
-    mockDashboardSummary
+    () => apiClient.getDashboardSummary(timeRange),
+    mockDashboardSummary,
+    [timeRange]
   );
   const { data: severityData, loading: l2 } = useApiCall(
     () => apiClient.getSeverityDistribution(),
-    mockSeverityDistribution
+    mockSeverityDistribution,
+    [timeRange]
   );
+  // Use limit:200 so the count on the KPI card is accurate (not capped at 50)
   const { data: alertsData, loading: l3 } = useApiCall(
-    () => apiClient.getAlerts({ limit: 50 }),
-    mockAlerts
+    () => apiClient.getAlerts({ limit: 200 }),
+    mockAlerts,
+    [timeRange]
   );
   const { data: findingsData, loading: l4 } = useApiCall(
     () => apiClient.getFindings({ limit: 20 }).then(r => {
-      // Backend may return { items, count } or array
       if (Array.isArray(r)) return r;
       if (r && 'items' in r) return (r as any).items as types.Finding[];
       return mockFindings;
     }),
-    mockFindings
+    mockFindings,
+    [timeRange]
+  );
+  // Pull compliance from same endpoint as the Compliance page → always in sync
+  const { data: complianceGauge, loading: l5 } = useApiCall(
+    () => apiClient.getComplianceGauge(),
+    mockComplianceScore,
+    [timeRange]
   );
 
   // Normalize summary shape — backend returns different structure than mock
   const metrics = summaryData?.metrics ?? mockDashboardSummary.metrics;
-  const findingsSummary = summaryData?.findings ?? mockDashboardSummary.findings;
-  const complianceSummary = summaryData?.compliance ?? mockDashboardSummary.compliance;
-
-  const costTrend = [1.2, 1.5, 1.8, 2.1, 2.4, 2.8, 3.1, 2.9];
-  const [activeRange, setActiveRange] = useState(0);
+  const complianceSummary = {
+    complianceScore: complianceGauge?.overallScore ?? summaryData?.compliance?.complianceScore ?? mockDashboardSummary.compliance.complianceScore,
+    status: complianceGauge?.status ?? summaryData?.compliance?.status ?? mockDashboardSummary.compliance.status,
+  };
 
   // Normalize alerts — backend may return array or { alerts }
   const normalizedAlerts: types.Alert[] = Array.isArray(alertsData)
     ? alertsData
     : (alertsData as any)?.alerts ?? mockAlerts;
 
-  // Calculate real critical count from the loaded live alerts
+  // Count critical findings from the full alert list (same source, consistent with AlertsFeed)
   const actualCriticalCount = normalizedAlerts.filter(a => a.severity === 'critical').length;
 
-  if (l1 || l2 || l3 || l4) {
+  if (l1 || l2 || l3 || l4 || l5) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
         <div className="w-8 h-8 border-4 border-[#1e3a8a] border-t-transparent rounded-full animate-spin" />
