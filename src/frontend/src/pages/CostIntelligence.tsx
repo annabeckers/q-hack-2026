@@ -27,6 +27,8 @@ import {
   mockDashboardSummary,
   mockRecommendations,
 } from '@/lib/mock-data';
+import { apiClient } from '@/lib/api';
+import { useApiCall } from '@/hooks/useApiCall';
 import type * as types from '@/lib/types';
 
 const MODEL_COLORS: Record<string, string> = {
@@ -43,22 +45,59 @@ export default function CostIntelligence() {
   const headerRef = useRef(null);
   const headerInView = useInView(headerRef, { once: true });
 
-  const totalCost = mockDashboardSummary.metrics.totalCost;
+  // ── API calls with mock fallback ──
+  const { data: summaryData } = useApiCall(
+    () => apiClient.getDashboardSummary(timeRange),
+    mockDashboardSummary,
+    [timeRange]
+  );
 
-  const costByDeptData = mockCostByDepartment.map((dept) => ({
+  const { data: costByDeptRaw } = useApiCall(
+    () => apiClient.getCostAnalytics('department').then(r => {
+      if (Array.isArray(r)) return r as types.CostBucket[];
+      if (r && 'items' in r) return (r as any).items as types.CostBucket[];
+      return mockCostByDepartment;
+    }),
+    mockCostByDepartment
+  );
+
+  const { data: costByModelRaw } = useApiCall(
+    () => apiClient.getCostAnalytics('model').then(r => {
+      if (Array.isArray(r)) return r as types.CostBucket[];
+      if (r && 'items' in r) return (r as any).items as types.CostBucket[];
+      return mockCostByModel;
+    }),
+    mockCostByModel
+  );
+
+  const { data: costTimeSeriesRaw } = useApiCall(
+    () => apiClient.getTimeSeries('cost', 'day'),
+    mockCostTimeSeries
+  );
+
+  const { data: recommendations } = useApiCall(
+    () => apiClient.getRecommendations(),
+    mockRecommendations
+  );
+
+  const totalCost = summaryData?.metrics?.totalCost ?? mockDashboardSummary.metrics.totalCost;
+
+  const costByDeptData = costByDeptRaw.map((dept) => ({
     name: dept.key,
     cost: Math.round(dept.cost),
   })).sort((a, b) => b.cost - a.cost);
 
-  const costByModelData = mockCostByModel.map((model) => ({
+  const costByModelData = costByModelRaw.map((model) => ({
     name: model.key,
     cost: Math.round(model.cost),
   }));
 
-  const costTrendData = mockCostTimeSeries.data.slice(-30).map((point) => ({
-    date: new Date(point.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    cost: Math.round(point.value),
-    timestamp: point.timestamp,
+  // Normalize time series — backend may return { data: [...] } or { metric, data }
+  const timeSeriesData = (costTimeSeriesRaw as any)?.data ?? costTimeSeriesRaw;
+  const costTrendData = (Array.isArray(timeSeriesData) ? timeSeriesData : []).slice(-30).map((point: any) => ({
+    date: new Date(point.timestamp ?? point.date ?? '').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    cost: Math.round(point.value ?? point.cost ?? 0),
+    timestamp: point.timestamp ?? point.date,
   }));
 
   const departmentBudgets = [
@@ -73,7 +112,7 @@ export default function CostIntelligence() {
     return 'success';
   };
 
-  const recommendations = mockRecommendations
+  const costRecs = recommendations
     .filter((rec) => rec.category === 'cost_optimization')
     .slice(0, 4);
 
@@ -317,7 +356,7 @@ export default function CostIntelligence() {
         <div>
           <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">Cost Optimization Opportunities</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {recommendations.map((rec, idx) => (
+            {costRecs.map((rec, idx) => (
               <motion.div
                 key={rec.id}
                 initial={{ opacity: 0, y: 20 }}

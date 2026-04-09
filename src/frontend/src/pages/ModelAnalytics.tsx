@@ -19,6 +19,8 @@ import Badge from '@/components/ui/Badge';
 import CountUp from '@/components/ui/CountUp';
 
 import { mockModelMetrics, mockScatterPoints } from '@/lib/mock-data';
+import { apiClient } from '@/lib/api';
+import { useApiCall } from '@/hooks/useApiCall';
 import { ModelMetrics } from '@/lib/types';
 
 const providerColors: Record<string, string> = {
@@ -112,9 +114,21 @@ function ModelUsageCard({ metric, index }: ModelCardProps) {
 }
 
 export default function ModelAnalytics() {
-  const models = mockModelMetrics.slice(0, 5);
   const headerRef = useRef(null);
   const headerInView = useInView(headerRef, { once: true });
+
+  // ── API calls with mock fallback ──
+  const { data: modelMetrics } = useApiCall(
+    () => apiClient.getModelComparison(),
+    mockModelMetrics
+  );
+
+  const { data: scatterPoints } = useApiCall(
+    () => apiClient.getComplexityScatter(),
+    mockScatterPoints
+  );
+
+  const models = modelMetrics.slice(0, 5);
 
   return (
     <motion.div
@@ -203,7 +217,7 @@ export default function ModelAnalytics() {
                     <Scatter
                       key={provider}
                       name={provider}
-                      data={mockScatterPoints.filter((p) => p.provider === provider)}
+                      data={scatterPoints.filter((p) => p.provider === provider)}
                       fill={color}
                       fillOpacity={0.7}
                     />

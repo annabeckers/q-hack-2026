@@ -25,6 +25,8 @@ import {
   mockAlerts,
   mockFindings,
 } from '../lib/mock-data';
+import { apiClient } from '../lib/api';
+import { useApiCall } from '../hooks/useApiCall';
 import * as types from '../lib/types';
 
 // ───
@@ -198,7 +200,7 @@ function ThreatDistribution({ distribution }: { distribution: types.SeverityDist
 function RecentDetections({ findings }: { findings: types.Finding[] }) {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
-  const sorted = findings.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime()).slice(0, 6);
+  const sorted = [...findings].sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime()).slice(0, 6);
 
   const icon = (type: types.FindingType) => {
     switch (type) {
@@ -236,31 +238,63 @@ function RecentDetections({ findings }: { findings: types.Finding[] }) {
 // ───
 interface StreamAlert extends types.Alert { displayTime: string; glowing: boolean; }
 
-function LiveThreatFeed() {
+function LiveThreatFeed({ initialAlerts }: { initialAlerts: types.Alert[] }) {
   const [alerts, setAlerts] = useState<StreamAlert[]>(() => {
-    // Populate with a few initial alerts so it's not empty for 60s
-    return mockAlerts.slice(0, 3).map(a => ({
+    return initialAlerts.slice(0, 3).map(a => ({
       ...a,
       displayTime: formatRelativeTime(a.timestamp),
       glowing: false,
     }));
   });
-  const [queue, setQueue] = useState<types.Alert[]>(mockAlerts.slice(3).reverse());
+  const [queue, setQueue] = useState<types.Alert[]>(initialAlerts.slice(3).reverse());
 
   useEffect(() => {
-    const iv = setInterval(() => {
-      setQueue(q => {
-        if (q.length === 0) return mockAlerts.slice().reverse();
-        const next = q[0];
-        setAlerts(curr => [
-          { ...next, displayTime: formatRelativeTime(next.timestamp), glowing: true },
-          ...curr.map(a => ({ ...a, glowing: false })),
-        ].slice(0, 20));
-        return q.slice(1);
-      });
-    }, 60000); // 1 minute interval for pitch
-    return () => clearInterval(iv);
-  }, []);
+    // Try to connect to SSE stream, fall back to mock rotation
+    let eventSource: EventSource | null = null;
+    let fallbackInterval: ReturnType<typeof setInterval> | null = null;
+
+    try {
+      eventSource = apiClient.streamAlerts();
+      eventSource.onmessage = (event) => {
+        try {
+          const alert = JSON.parse(event.data) as types.Alert;
+          setAlerts(curr => [
+            { ...alert, displayTime: formatRelativeTime(alert.timestamp), glowing: true },
+            ...curr.map(a => ({ ...a, glowing: false })),
+          ].slice(0, 20));
+        } catch {
+          // ignore parse errors
+        }
+      };
+      eventSource.onerror = () => {
+        // SSE failed, fall back to mock rotation
+        eventSource?.close();
+        eventSource = null;
+        startFallback();
+      };
+    } catch {
+      startFallback();
+    }
+
+    function startFallback() {
+      fallbackInterval = setInterval(() => {
+        setQueue(q => {
+          if (q.length === 0) return initialAlerts.slice().reverse();
+          const next = q[0];
+          setAlerts(curr => [
+            { ...next, displayTime: formatRelativeTime(next.timestamp), glowing: true },
+            ...curr.map(a => ({ ...a, glowing: false })),
+          ].slice(0, 20));
+          return q.slice(1);
+        });
+      }, 60000);
+    }
+
+    return () => {
+      eventSource?.close();
+      if (fallbackInterval) clearInterval(fallbackInterval);
+    };
+  }, [initialAlerts]);
 
   const getIcon = (t: types.AlertType) => {
     switch (t) { case 'secret': return <KeyRound size={13} />; case 'pii': return <UserX size={13} />; case 'slopsquat': return <Package size={13} />; case 'anomaly': return <Zap size={13} />; }
@@ -273,10 +307,10 @@ function LiveThreatFeed() {
         <span className="font-semibold text-[var(--text-primary)] text-sm">Live Threat Feed</span>
         <div className="flex items-center gap-1.5">
           <div className="relative flex items-center justify-center">
-            <motion.div 
-              className="w-2 h-2 bg-[var(--critical)] rounded-full" 
-              animate={{ scale: [1, 1.4, 1], opacity: [0.6, 1, 0.6] }} 
-              transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }} 
+            <motion.div
+              className="w-2 h-2 bg-[var(--critical)] rounded-full"
+              animate={{ scale: [1, 1.4, 1], opacity: [0.6, 1, 0.6] }}
+              transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
             />
           </div>
           <span className="text-[10px] font-bold text-[var(--critical)] uppercase tracking-wide">Live</span>
@@ -320,7 +354,7 @@ function LiveThreatFeed() {
 // ───
 // Models Indicator
 // ───
-function ModelsActive() {
+function ModelsActive({ modelCount, deptCount }: { modelCount: number; deptCount: number }) {
   const p = [{ n: 'GPT-4o', c: 'var(--openai)' }, { n: 'Claude', c: 'var(--anthropic)' }, { n: 'Gemini', c: 'var(--google)' }, { n: 'Mistral', c: 'var(--mistral)' }, { n: 'Local', c: 'var(--local)' }];
   return (
     <div className="space-y-2 mt-1">
@@ -331,7 +365,7 @@ function ModelsActive() {
           />
         ))}
       </div>
-      <p className="text-[11px] text-[var(--text-tertiary)]">5 providers · 7 departments</p>
+      <p className="text-[11px] text-[var(--text-tertiary)]">{modelCount} providers · {deptCount} departments</p>
     </div>
   );
 }
@@ -374,9 +408,41 @@ function InsightBar() {
 // MAIN DASHBOARD
 // ═══════════════════════════════════════════
 export default function Dashboard() {
-  const { metrics, findings, compliance } = mockDashboardSummary;
+  // ── API calls with mock fallback ──
+  const { data: summaryData } = useApiCall(
+    () => apiClient.getDashboardSummary(),
+    mockDashboardSummary
+  );
+  const { data: severityData } = useApiCall(
+    () => apiClient.getSeverityDistribution(),
+    mockSeverityDistribution
+  );
+  const { data: alertsData } = useApiCall(
+    () => apiClient.getAlerts({ limit: 50 }),
+    mockAlerts
+  );
+  const { data: findingsData } = useApiCall(
+    () => apiClient.getFindings({ limit: 20 }).then(r => {
+      // Backend may return { items, count } or array
+      if (Array.isArray(r)) return r;
+      if (r && 'items' in r) return (r as any).items as types.Finding[];
+      return mockFindings;
+    }),
+    mockFindings
+  );
+
+  // Normalize summary shape — backend returns different structure than mock
+  const metrics = summaryData?.metrics ?? mockDashboardSummary.metrics;
+  const findingsSummary = summaryData?.findings ?? mockDashboardSummary.findings;
+  const complianceSummary = summaryData?.compliance ?? mockDashboardSummary.compliance;
+
   const costTrend = [1.2, 1.5, 1.8, 2.1, 2.4, 2.8, 3.1, 2.9];
   const [activeRange, setActiveRange] = useState(0);
+
+  // Normalize alerts — backend may return array or { alerts }
+  const normalizedAlerts: types.Alert[] = Array.isArray(alertsData)
+    ? alertsData
+    : (alertsData as any)?.alerts ?? mockAlerts;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }} className="p-6 lg:p-8 relative min-h-full">
@@ -419,19 +485,21 @@ export default function Dashboard() {
         {/* KPI Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard title="Total AI Cost" value={metrics.totalCost} format="currency" trend={{ direction: 'up', percent: 12.3, good: false }} icon={DollarSign} sparkline={costTrend} index={0} />
-          <KPICard title="Critical Findings" value={findings.criticalCount} icon={ShieldAlert} badge="8 unresolved" index={1} />
-          <ComplianceRing score={compliance.complianceScore} idx={2} />
-          <KPICard title="Active Models" value={5} icon={Brain} index={3}><ModelsActive /></KPICard>
+          <KPICard title="Critical Findings" value={findingsSummary.criticalCount} icon={ShieldAlert} badge={`${findingsSummary.criticalCount} unresolved`} index={1} />
+          <ComplianceRing score={complianceSummary.complianceScore} idx={2} />
+          <KPICard title="Active Models" value={metrics.totalModels ?? 5} icon={Brain} index={3}>
+            <ModelsActive modelCount={metrics.totalModels ?? 5} deptCount={metrics.totalDepartments ?? 7} />
+          </KPICard>
         </div>
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-4">
-            <ThreatDistribution distribution={mockSeverityDistribution} />
-            <RecentDetections findings={mockFindings} />
+            <ThreatDistribution distribution={severityData} />
+            <RecentDetections findings={findingsData} />
           </div>
           <div className="min-h-[500px]">
-            <LiveThreatFeed />
+            <LiveThreatFeed initialAlerts={normalizedAlerts} />
           </div>
         </div>
 

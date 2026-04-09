@@ -5,9 +5,11 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import CountUp from '@/components/ui/CountUp';
 import { mockComplianceScore, mockDataFlow, mockProviderDPA, mockShadowAI } from '@/lib/mock-data';
+import { apiClient } from '@/lib/api';
+import { useApiCall } from '@/hooks/useApiCall';
 
-function ComplianceGauge() {
-  const score = mockComplianceScore.overallScore;
+function ComplianceGauge({ complianceData }: { complianceData: typeof mockComplianceScore }) {
+  const score = complianceData.overallScore;
   const radius = 50;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (score / 100) * circumference;
@@ -41,7 +43,7 @@ function ComplianceGauge() {
         <div className="lg:col-span-2">
           <Card header={<span className="font-semibold text-[var(--text-primary)] text-sm">Compliance Pillars</span>}>
             <div className="space-y-4">
-              {mockComplianceScore.auditPillars.map((pillar, idx) => {
+              {complianceData.auditPillars.map((pillar, idx) => {
                 const pct = pillar.compliancePercentage;
                 const barColor = pct < 70 ? 'bg-[var(--critical)]' : pct < 85 ? 'bg-[var(--medium)]' : 'bg-[var(--success)]';
                 return (
@@ -65,14 +67,14 @@ function ComplianceGauge() {
   );
 }
 
-function DataFlowVisualization() {
+function DataFlowVisualization({ dataFlow }: { dataFlow: typeof mockDataFlow }) {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true });
   const nodesByType = {
-    department: mockDataFlow.nodes.filter(n => n.type === 'department'),
-    tool: mockDataFlow.nodes.filter(n => n.type === 'tool'),
-    model: mockDataFlow.nodes.filter(n => n.type === 'model'),
-    region: mockDataFlow.nodes.filter(n => n.type === 'region'),
+    department: dataFlow.nodes.filter(n => n.type === 'department'),
+    tool: dataFlow.nodes.filter(n => n.type === 'tool'),
+    model: dataFlow.nodes.filter(n => n.type === 'model'),
+    region: dataFlow.nodes.filter(n => n.type === 'region'),
   };
   const typeColors: Record<string, string> = { department: '#1e3a8a', tool: '#0284c7', model: '#0d9488', region: '#16a34a' };
   const typeLabels: Record<string, string> = { department: 'Departments', tool: 'Tools', model: 'Models', region: 'Regions' };
@@ -109,10 +111,10 @@ function DataFlowVisualization() {
   );
 }
 
-function ProviderComplianceTable() {
+function ProviderComplianceTable({ providers }: { providers: typeof mockProviderDPA }) {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true });
-  const providers = mockProviderDPA.slice(0, 5);
+  const displayProviders = providers.slice(0, 5);
   const riskVariant = (r: string): 'critical' | 'medium' | 'success' => r === 'high' ? 'critical' : r === 'medium' ? 'medium' : 'success';
 
   return (
@@ -128,7 +130,7 @@ function ProviderComplianceTable() {
               </tr>
             </thead>
             <tbody>
-              {providers.map((p, idx) => (
+              {displayProviders.map((p, idx) => (
                 <motion.tr key={p.provider} initial={{ opacity: 0 }} animate={isInView ? { opacity: 1 } : undefined} transition={{ delay: 0.2 + idx * 0.04 }} className="border-b border-[var(--border-subtle)] hover:bg-white/[0.02] transition-colors">
                   <td className="py-2.5 px-3 font-medium text-[var(--text-primary)]">{p.provider}</td>
                   <td className="py-2.5 px-3 text-[var(--text-secondary)] text-[13px]">{p.regions.join(', ')}</td>
@@ -150,8 +152,8 @@ function ProviderComplianceTable() {
   );
 }
 
-function ShadowAIDetection() {
-  const { approvedProviders, violations } = mockShadowAI;
+function ShadowAIDetection({ shadowData }: { shadowData: typeof mockShadowAI }) {
+  const { approvedProviders, violations } = shadowData;
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true });
 
@@ -235,6 +237,27 @@ export default function Compliance() {
   const headerRef = useRef(null);
   const headerInView = useInView(headerRef, { once: true });
 
+  // ── API calls with mock fallback ──
+  const { data: complianceScore } = useApiCall(
+    () => apiClient.getComplianceGauge(),
+    mockComplianceScore
+  );
+
+  const { data: dataFlow } = useApiCall(
+    () => apiClient.getDataFlow(),
+    mockDataFlow
+  );
+
+  const { data: providerDPA } = useApiCall(
+    () => apiClient.getProviderDPA(),
+    mockProviderDPA
+  );
+
+  const { data: shadowAI } = useApiCall(
+    () => apiClient.getShadowAI(),
+    mockShadowAI
+  );
+
   return (
     <motion.div className="p-6 lg:p-8 relative min-h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
       <div className="space-y-6 relative z-10">
@@ -249,13 +272,13 @@ export default function Compliance() {
             </h1>
             <p className="text-sm text-[var(--text-tertiary)] mt-1">Monitor regulatory requirements and audit readiness</p>
           </div>
-          <Badge variant="info" size="md">{mockComplianceScore.overallScore}/100</Badge>
+          <Badge variant="info" size="md">{complianceScore.overallScore}/100</Badge>
         </motion.div>
 
-        <ComplianceGauge />
-        <DataFlowVisualization />
-        <ProviderComplianceTable />
-        <ShadowAIDetection />
+        <ComplianceGauge complianceData={complianceScore} />
+        <DataFlowVisualization dataFlow={dataFlow} />
+        <ProviderComplianceTable providers={providerDPA} />
+        <ShadowAIDetection shadowData={shadowAI} />
         <ComplianceChecklist />
       </div>
     </motion.div>

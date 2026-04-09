@@ -16,6 +16,8 @@ import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 
 import { mockFindings, mockSeverityDistribution, mockSlopsquattingStats, mockContextRisk } from '@/lib/mock-data';
+import { apiClient } from '@/lib/api';
+import { useApiCall } from '@/hooks/useApiCall';
 import type * as types from '@/lib/types';
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -34,12 +36,37 @@ export default function SecurityIntelligence() {
   const headerRef = useRef(null);
   const headerInView = useInView(headerRef, { once: true });
 
+  // ── API calls with mock fallback ──
+  const { data: findingsRaw } = useApiCall(
+    () => apiClient.getFindings({ limit: 100 }).then(r => {
+      if (Array.isArray(r)) return r as types.Finding[];
+      if (r && 'items' in r) return (r as any).items as types.Finding[];
+      return mockFindings;
+    }),
+    mockFindings
+  );
+
+  const { data: severityDist } = useApiCall(
+    () => apiClient.getSeverityDistribution(),
+    mockSeverityDistribution
+  );
+
+  const { data: slopsquattingStats } = useApiCall(
+    () => apiClient.getSlopsquattingByModel(),
+    mockSlopsquattingStats
+  );
+
+  const { data: contextRisk } = useApiCall(
+    () => apiClient.getContextRisk(10),
+    mockContextRisk
+  );
+
   const filteredFindings = useMemo(() => {
-    let filtered = mockFindings;
+    let filtered = findingsRaw;
     if (filterType !== 'all') {
       filtered = filtered.filter((f) => f.type === filterType);
     }
-    return filtered.sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       const aVal = a[sortBy];
       const bVal = b[sortBy];
       if (typeof aVal === 'string' && typeof bVal === 'string') {
@@ -50,32 +77,37 @@ export default function SecurityIntelligence() {
       }
       return 0;
     });
-  }, [filterType, sortBy, sortDesc]);
+  }, [findingsRaw, filterType, sortBy, sortDesc]);
 
   const totalFindings = filteredFindings.length;
 
-  const slopsquattingData = mockSlopsquattingStats.map((stat) => ({
+  const slopsquattingData = slopsquattingStats.map((stat) => ({
     name: stat.provider,
     count: stat.hallucCount,
   }));
 
   const handleFindingClick = (finding: types.Finding) => {
-    const detail: types.FindingDetail = {
-      ...finding,
-      fullContext: finding.contextPreview + '\n\n... [Additional context with surrounding data] ...',
-      remediationHistory: [
-        {
-          timestamp: finding.detectedAt,
-          oldStatus: 'new',
-          newStatus: finding.status,
-          notes: 'Finding detected and logged',
-          actor: 'security-scanner',
-        },
-      ],
-      relatedFindings: [],
-      duplicateCount: Math.floor(Math.random() * 5),
-    };
-    setSelectedFinding(detail);
+    // Try to fetch detail from API, fall back to constructing from finding
+    apiClient.getFindingDetail(finding.id).then(detail => {
+      setSelectedFinding(detail);
+    }).catch(() => {
+      const detail: types.FindingDetail = {
+        ...finding,
+        fullContext: finding.contextPreview + '\n\n... [Additional context with surrounding data] ...',
+        remediationHistory: [
+          {
+            timestamp: finding.detectedAt,
+            oldStatus: 'new',
+            newStatus: finding.status,
+            notes: 'Finding detected and logged',
+            actor: 'security-scanner',
+          },
+        ],
+        relatedFindings: [],
+        duplicateCount: Math.floor(Math.random() * 5),
+      };
+      setSelectedFinding(detail);
+    });
   };
 
   const handleSort = (column: keyof types.Finding) => {
@@ -210,9 +242,9 @@ export default function SecurityIntelligence() {
 
         {/* Severity Panels */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {severityPanel('Secrets', mockSeverityDistribution.secrets, '#ef4444', 0)}
-          {severityPanel('PII', mockSeverityDistribution.pii, '#f59e0b', 1)}
-          {severityPanel('Slopsquatting', mockSeverityDistribution.slopsquat, '#8b5cf6', 2)}
+          {severityPanel('Secrets', severityDist.secrets, '#ef4444', 0)}
+          {severityPanel('PII', severityDist.pii, '#f59e0b', 1)}
+          {severityPanel('Slopsquatting', severityDist.slopsquat, '#8b5cf6', 2)}
         </div>
 
         {/* Charts Row */}
@@ -256,7 +288,7 @@ export default function SecurityIntelligence() {
           >
             <Card header={<h3 className="font-bold text-[var(--text-primary)]">Context Exposure Risk</h3>}>
               <div className="space-y-2 max-h-[350px] overflow-y-auto">
-                {mockContextRisk.slice(0, 10).map((session, idx) => (
+                {contextRisk.slice(0, 10).map((session, idx) => (
                   <motion.div
                     key={session.sessionId}
                     initial={{ opacity: 0, x: 10 }}

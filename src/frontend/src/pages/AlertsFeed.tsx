@@ -5,6 +5,8 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 
 import { mockAlerts } from '@/lib/mock-data';
+import { apiClient } from '@/lib/api';
+import { useApiCall } from '@/hooks/useApiCall';
 import { Alert, AlertStatus } from '@/lib/types';
 
 const severityColors: Record<string, string> = {
@@ -178,12 +180,29 @@ function AlertItem({ alert, onStatusChange, isNew, index }: AlertItemProps) {
 }
 
 export default function AlertsFeed() {
+  // ── API call with mock fallback ──
+  const { data: initialAlerts } = useApiCall(
+    () => apiClient.getAlerts({ limit: 50 }).then(r => {
+      if (Array.isArray(r)) return r as Alert[];
+      if (r && 'alerts' in r) return (r as any).alerts as Alert[];
+      return mockAlerts;
+    }),
+    mockAlerts
+  );
+
   const [alerts, setAlerts] = useState<Alert[]>(mockAlerts.slice(0, 8));
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'high' | 'medium'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'secret' | 'pii' | 'slopsquat' | 'anomaly'>('all');
   const [newAlertIds, setNewAlertIds] = useState<Set<string>>(new Set());
   const headerRef = useRef(null);
   const headerInView = useInView(headerRef, { once: true });
+
+  // Update alerts when API data arrives
+  useEffect(() => {
+    if (initialAlerts && initialAlerts.length > 0) {
+      setAlerts(initialAlerts.slice(0, 8));
+    }
+  }, [initialAlerts]);
 
   const stats = useMemo(() => {
     const critical = alerts.filter((a) => a.severity === 'critical').length;
@@ -201,29 +220,75 @@ export default function AlertsFeed() {
     });
   }, [alerts, severityFilter, typeFilter]);
 
+  // Stream new alerts from SSE or fall back to mock rotation
   useEffect(() => {
-    const interval = setInterval(() => {
-      const availableAlerts = mockAlerts.filter((a) => !alerts.some((existing) => existing.id === a.id));
+    let eventSource: EventSource | null = null;
+    let fallbackInterval: ReturnType<typeof setInterval> | null = null;
 
-      if (availableAlerts.length > 0 && alerts.length < 25) {
-        const randomAlert = availableAlerts[Math.floor(Math.random() * availableAlerts.length)];
-        setNewAlertIds((prev) => new Set([...prev, randomAlert.id]));
-        setAlerts((prev) => [randomAlert, ...prev]);
+    try {
+      eventSource = apiClient.streamAlerts();
+      eventSource.onmessage = (event) => {
+        try {
+          const alert = JSON.parse(event.data) as Alert;
+          if (!alerts.some(a => a.id === alert.id)) {
+            setNewAlertIds((prev) => new Set([...prev, alert.id]));
+            setAlerts((prev) => [alert, ...prev].slice(0, 25));
+            setTimeout(() => {
+              setNewAlertIds((prev) => {
+                const next = new Set(prev);
+                next.delete(alert.id);
+                return next;
+              });
+            }, 3000);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      };
+      eventSource.onerror = () => {
+        eventSource?.close();
+        eventSource = null;
+        startFallback();
+      };
+    } catch {
+      startFallback();
+    }
 
-        setTimeout(() => {
-          setNewAlertIds((prev) => {
-            const next = new Set(prev);
-            next.delete(randomAlert.id);
-            return next;
-          });
-        }, 3000);
-      }
-    }, 4000);
+    function startFallback() {
+      fallbackInterval = setInterval(() => {
+        const allAlerts = initialAlerts.length > 0 ? initialAlerts : mockAlerts;
+        const availableAlerts = allAlerts.filter((a) => !alerts.some((existing) => existing.id === a.id));
 
-    return () => clearInterval(interval);
-  }, [alerts]);
+        if (availableAlerts.length > 0 && alerts.length < 25) {
+          const randomAlert = availableAlerts[Math.floor(Math.random() * availableAlerts.length)];
+          setNewAlertIds((prev) => new Set([...prev, randomAlert.id]));
+          setAlerts((prev) => [randomAlert, ...prev]);
+
+          setTimeout(() => {
+            setNewAlertIds((prev) => {
+              const next = new Set(prev);
+              next.delete(randomAlert.id);
+              return next;
+            });
+          }, 3000);
+        }
+      }, 4000);
+    }
+
+    return () => {
+      eventSource?.close();
+      if (fallbackInterval) clearInterval(fallbackInterval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAlerts]);
 
   const handleStatusChange = (id: string, status: AlertStatus) => {
+    // Try to acknowledge on backend
+    if (status === 'acknowledged') {
+      apiClient.acknowledgeAlert(id).catch(() => {
+        // Silently fail — UI update still happens
+      });
+    }
     setAlerts((prev) =>
       prev.map((alert) => (alert.id === id ? { ...alert, status } : alert))
     );
