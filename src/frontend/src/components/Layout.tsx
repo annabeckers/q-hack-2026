@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -7,6 +7,7 @@ import {
   Brain,
   Scale,
   Bell,
+  Lightbulb,
   ChevronLeft,
   ChevronRight,
   Activity,
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
   { label: 'Model Analytics', icon: Brain, path: '/models' },
   { label: 'Compliance', icon: Scale, path: '/compliance' },
   { label: 'Alert Feed', icon: Bell, path: '/alerts', isPulsing: true },
+  { label: 'Recommendations', icon: Lightbulb, path: '/recommendations' },
 ];
 
 const pageNames: Record<string, string> = {
@@ -38,13 +40,20 @@ const pageNames: Record<string, string> = {
   '/models': 'Model Intelligence',
   '/compliance': 'Compliance',
   '/alerts': 'Alert Feed',
+  '/recommendations': 'Recommendations',
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
 
   const currentPageName = pageNames[location.pathname] || 'Argus';
+
+  // Scroll to top on every route change
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0);
+  }, [location.pathname]);
 
   return (
     <div className="flex h-screen w-full bg-[var(--bg-0)] text-[var(--text-primary)] overflow-hidden">
@@ -78,7 +87,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           <div className="flex items-center gap-3 relative z-10">
             <div className="relative flex-shrink-0">
-              <Shield size={20} className="text-[#1e3a8a]" strokeWidth={2.5} />
+              <Shield size={28} className="text-[#1e3a8a]" strokeWidth={2.5} />
             </div>
             <AnimatePresence>
               {!collapsed && (
@@ -89,7 +98,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   transition={{ delay: 0.05, duration: 0.2 }}
                   className="flex items-baseline gap-2 overflow-hidden"
                 >
-                  <span className="font-mono font-bold text-sm tracking-[0.15em] text-[#141B41]">
+                  <span className="font-mono font-bold text-lg tracking-[0.15em] text-[#141B41]">
                     ARGUS
                   </span>
                   <span className="text-[10px] text-[var(--text-tertiary)] font-medium whitespace-nowrap">
@@ -235,16 +244,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         className="flex-1 flex flex-col overflow-hidden relative z-10"
       >
         {/* Top Bar — clean and minimal */}
-        <motion.div
+        <div
           className="h-12 border-b flex items-center justify-between px-6 relative z-20 flex-shrink-0"
           style={{
             background: 'rgba(255, 255, 255, 0.85)',
             backdropFilter: 'blur(20px) saturate(180%)',
             borderColor: 'rgba(20, 27, 65, 0.06)',
           }}
-          initial={{ y: -12, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.4, ease: 'easeOut' }}
         >
           {/* Left: breadcrumb */}
           <AnimatePresence mode="wait">
@@ -275,10 +281,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <span className="text-xs text-[var(--text-tertiary)] font-medium">Live</span>
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Main content area */}
-        <main className="flex-1 overflow-y-auto bg-transparent relative">
+        <main ref={mainRef} className="flex-1 overflow-y-auto bg-transparent relative">
           {children}
         </main>
       </motion.div>

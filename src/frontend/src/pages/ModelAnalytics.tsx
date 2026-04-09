@@ -13,6 +13,7 @@ import {
   Bar,
   Cell,
 } from 'recharts';
+import { Link } from 'react-router-dom';
 import { Lightbulb, TrendingDown, Brain } from 'lucide-react';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
@@ -154,7 +155,7 @@ export default function ModelAnalytics() {
         <motion.div
           ref={headerRef}
           initial={{ opacity: 0, y: -20 }}
-          animate={headerInView ? { opacity: 1, y: 0 } : undefined}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
           className="flex items-center justify-between"
         >
@@ -342,15 +343,14 @@ export default function ModelAnalytics() {
                   </div>
                 </div>
 
-                <motion.a
-                  href="/recommendations"
-                  whileHover={{ x: 4 }}
+                <Link
+                  to="/recommendations"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors border border-transparent hover:opacity-90"
                   style={{ backgroundColor: '#1e3a8a', color: '#ffffff' }}
                 >
                   View Recommendations
                   <span>→</span>
-                </motion.a>
+                </Link>
               </div>
             </Card>
           </motion.div>

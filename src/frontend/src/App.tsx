@@ -8,6 +8,7 @@ import CostIntelligence from './pages/CostIntelligence';
 import ModelAnalytics from './pages/ModelAnalytics';
 import Compliance from './pages/Compliance';
 import AlertsFeed from './pages/AlertsFeed';
+import Recommendations from './pages/Recommendations';
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -21,6 +22,7 @@ function AnimatedRoutes() {
         <Route path="/models" element={<ModelAnalytics />} />
         <Route path="/compliance" element={<Compliance />} />
         <Route path="/alerts" element={<AlertsFeed />} />
+        <Route path="/recommendations" element={<Recommendations />} />
       </Routes>
     </AnimatePresence>
   );
