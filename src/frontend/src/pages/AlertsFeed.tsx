@@ -319,9 +319,10 @@ export default function AlertsFeed() {
                     onClick={() => setSeverityFilter(sev)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all border ${
                       severityFilter === sev
-                        ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]'
-                        : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-default)]'
+                        ? 'border-transparent'
+                        : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-default)]'
                     }`}
+                    style={severityFilter === sev ? { backgroundColor: '#1e3a8a', color: '#ffffff' } : undefined}
                   >
                     {sev === 'all' ? 'All Severities' : sev.charAt(0).toUpperCase() + sev.slice(1)}
                   </motion.button>
@@ -340,9 +341,10 @@ export default function AlertsFeed() {
                     onClick={() => setTypeFilter(type)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all border ${
                       typeFilter === type
-                        ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]'
-                        : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-default)]'
+                        ? 'border-transparent'
+                        : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-default)]'
                     }`}
+                    style={typeFilter === type ? { backgroundColor: '#1e3a8a', color: '#ffffff' } : undefined}
                   >
                     {type === 'all' ? 'All Types' : typeLabels[type]}
                   </motion.button>

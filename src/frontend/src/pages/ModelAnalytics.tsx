@@ -319,7 +319,8 @@ export default function ModelAnalytics() {
                 <motion.a
                   href="/recommendations"
                   whileHover={{ x: 4 }}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-medium text-sm transition-colors shadow-[0_0_15px_var(--accent-glow)]"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors border border-transparent hover:opacity-90"
+                  style={{ backgroundColor: '#1e3a8a', color: '#ffffff' }}
                 >
                   View Recommendations
                   <span>→</span>

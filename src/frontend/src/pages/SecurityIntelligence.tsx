@@ -198,9 +198,10 @@ export default function SecurityIntelligence() {
               onClick={() => setFilterType(tab)}
               className={`px-4 py-2 rounded-full font-medium transition-all border text-sm ${
                 filterType === tab
-                  ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-[0_0_15px_var(--accent-glow)]'
-                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-default)]'
+                  ? 'border-transparent'
+                  : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-default)]'
               }`}
+              style={filterType === tab ? { backgroundColor: '#1e3a8a', color: '#ffffff' } : undefined}
             >
               {tab === 'all' ? 'All' : tab === 'slopsquat' ? 'Slopsquatting' : tab.toUpperCase()}
             </motion.button>

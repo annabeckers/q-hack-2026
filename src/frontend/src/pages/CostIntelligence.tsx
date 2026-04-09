@@ -133,9 +133,10 @@ export default function CostIntelligence() {
               onClick={() => setTimeRange(range)}
               className={`px-4 py-2 rounded-full font-medium transition-all border text-sm ${
                 timeRange === range
-                  ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-[0_0_15px_var(--accent-glow)]'
-                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-default)]'
+                  ? 'border-transparent'
+                  : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-default)]'
               }`}
+              style={timeRange === range ? { backgroundColor: '#1e3a8a', color: '#ffffff' } : undefined}
             >
               {range === 'week' ? 'Week' : range === 'month' ? 'Month' : range === 'quarter' ? 'Quarter' : 'YTD'}
             </motion.button>
@@ -327,7 +328,7 @@ export default function CostIntelligence() {
                   <div className="space-y-4">
                     <div className="flex items-start gap-3">
                       <motion.div
-                        className="p-2 rounded-lg bg-[var(--accent-muted)] group-hover:bg-[var(--accent)] transition-colors"
+                        className="p-2 rounded-lg bg-[var(--accent-muted)] group-hover:bg-[#1e3a8a] transition-colors"
                         whileHover={{ rotate: 15 }}
                       >
                         {rec.impact.effortToImplement === 'easy' || rec.impact.effortToImplement === 'trivial' ? (
