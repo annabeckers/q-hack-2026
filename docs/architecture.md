@@ -117,10 +117,14 @@ Chat exports (JSON/JSONL/MD)
         │
         ↓  all write to
   findings table  ←── per-message findings, unified schema
+        ↓  run_meta_analysis()
+  conversation_insights table ←── Strands SDK MetaAnalyzer (risk aggregation)
         ↓  refresh_dashboard_views()
   materialized views  ←── pre-computed, frontend-facing
+        ↓  generate_system_recommendations()
+  system_recommendations table ←── Strands SDK Recommender Agent (security/cost/sovereignty advice)
         ↓
-   23 API endpoints (/api/v1/dashboard/*)
+   24 API endpoints (/api/v1/dashboard/* & /api/v1/recommendations)
         ↓
    Frontend dashboard
 ```
@@ -135,6 +139,8 @@ Chat exports (JSON/JSONL/MD)
 | `llm_trivial` | LLM (Gemini) | `usage_quality` | low |
 | `llm_sensitivity` | LLM (Gemini) | `content_leak` | critical/high/medium |
 | `llm_complexity` | LLM (Gemini) | `complexity` | info |
+| `MetaAnalyzer` | LLM (Strands) | Aggregation | N/A |
+| `RecommenderAgent`| LLM (Strands) | Strategic Output | N/A |
 
 ### Analyzer Contract
 

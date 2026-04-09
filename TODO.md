@@ -42,6 +42,13 @@
 - [x] 23 dashboard endpoints wired
 - [x] Auth router
 
+### LLM Insights Layer
+- [x] Meta-analyzer — reason across deterministic + LLM findings
+- [x] Flag high-risk conversations (high secrets + high complexity)
+- [x] Per-department risk scoring
+- [x] Content/Insights summary per conversation
+
+
 ---
 
 ## Next Up 🔲
@@ -60,12 +67,6 @@
 - [ ] Registry lookup for slopsquatting (verify against PyPI/npm)
 - [ ] Add retry logic on LLM API failure
 - [ ] Parallel analyzer invocation (currently sequential)
-
-### LLM Insights Layer
-- [ ] Meta-analyzer — reason across deterministic + LLM findings
-- [ ] Flag high-risk conversations (high secrets + high complexity)
-- [ ] Per-department risk scoring
-- [ ] Content/Insights summary per conversation
 
 ### Recommendations
 - [ ] Engine logic — provider recs based on risk/cost/compliance

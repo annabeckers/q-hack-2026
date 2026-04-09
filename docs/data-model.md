@@ -164,6 +164,29 @@ These tables are defined in `src/backend/scripts/postgres/` and populated by the
 | `pattern` | TEXT | Regex pattern |
 | `active` | BOOLEAN | Whether rule is active |
 
+### conversation_insights (005_insights_schema.sql)
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK | |
+| `chat_id` | BIGINT FK → chats.id | |
+| `run_id` | TEXT | |
+| `risk_score` | INTEGER | 0-100 calculated by MetaAnalyzer |
+| `risk_factors` | JSONB | List of reasons |
+| `summary` | TEXT | 1-2 sentence executive summary |
+| `created_at` | TIMESTAMPTZ | |
+
+### system_recommendations (006_recommendations_schema.sql)
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK | |
+| `category` | VARCHAR(50) | `security`, `cost`, `compliance`, `training` |
+| `title` | TEXT | Short recommendation title |
+| `description` | TEXT | The detailed guidance / instruction |
+| `impact_score` | INTEGER | 0-100 derived by Recommender LLM |
+| `target_audience` | VARCHAR(100) | e.g. "Engineering" |
+| `status` | VARCHAR(20) | `active`, `historical` |
+| `created_at` | TIMESTAMPTZ | |
+
 ### Materialized Views (004_dashboard_views.sql)
 | View | Purpose |
 |---|---|

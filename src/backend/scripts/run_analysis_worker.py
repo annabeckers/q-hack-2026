@@ -57,6 +57,16 @@ async def run_llm(batch_size: int) -> dict[str, int]:
         return {}
 
 
+async def run_meta_analysis() -> int:
+    """Run meta-analyzer on chats that have findings but no insight record yet."""
+    try:
+        from app.application.services.meta_analysis import run_meta_analysis_for_pending_chats
+        return await run_meta_analysis_for_pending_chats()
+    except Exception as e:
+        log.error("meta_analysis_failed", error=str(e))
+        return 0
+
+
 async def refresh_dashboard() -> None:
     """Refresh materialized views so frontend reads fresh data."""
     from sqlalchemy import text
@@ -83,9 +93,23 @@ async def run_cycle(batch_size: int, only: str | None = None) -> dict[str, int]:
         llm_stats = await run_llm(batch_size)
         stats.update(llm_stats)
 
+    # Run meta-analysis *after* raw findings are generated
+    insights_created = await run_meta_analysis()
+    if insights_created > 0:
+        stats["meta_insights"] = insights_created
+
     # Refresh frontend-facing views after producing new findings
     if sum(stats.values()) > 0:
         await refresh_dashboard()
+        
+    # Generate system recommendations
+    try:
+        from app.application.services.recommendation_engine import generate_system_recommendations
+        rec_count = await generate_system_recommendations()
+        if rec_count > 0:
+            stats["new_recommendations"] = rec_count
+    except Exception as e:
+        log.error("recommendation_engine_failed", error=str(e))
 
     # Touch health file for Docker health check
     HEALTH_FILE.write_text("ok")

@@ -18,9 +18,11 @@ SELECT
     COUNT(DISTINCT c.id) FILTER (WHERE NOT EXISTS (
         SELECT 1 FROM findings ff WHERE ff.chat_id = c.id
     )) AS pending_messages,
+    AVG(ci.risk_score) AS average_risk_score,
     NOW() AS refreshed_at
 FROM chats c
-LEFT JOIN findings f ON f.chat_id = c.id;
+LEFT JOIN findings f ON f.chat_id = c.id
+LEFT JOIN conversation_insights ci ON ci.chat_id = c.id;
 
 -- 2. Findings by category + severity (for the leak breakdown charts)
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_findings_by_category AS
