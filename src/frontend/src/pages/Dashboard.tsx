@@ -444,6 +444,9 @@ export default function Dashboard() {
     ? alertsData
     : (alertsData as any)?.alerts ?? mockAlerts;
 
+  // Calculate real critical count from the loaded live alerts
+  const actualCriticalCount = normalizedAlerts.filter(a => a.severity === 'critical').length;
+
   if (l1 || l2 || l3 || l4) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
@@ -493,7 +496,7 @@ export default function Dashboard() {
         {/* KPI Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard title="Total AI Cost" value={metrics.totalCost} format="currency" trend={{ direction: 'up', percent: 12.3, good: false }} icon={DollarSign} sparkline={costTrend} index={0} />
-          <KPICard title="Critical Findings" value={findingsSummary.criticalCount} icon={ShieldAlert} badge={`${findingsSummary.criticalCount} unresolved`} index={1} />
+          <KPICard title="Critical Findings" value={actualCriticalCount} icon={ShieldAlert} badge={`${actualCriticalCount} unresolved`} index={1} />
           <ComplianceRing score={complianceSummary.complianceScore} idx={2} />
           <KPICard title="Active Models" value={metrics.totalModels ?? 5} icon={Brain} index={3}>
             <ModelsActive modelCount={metrics.totalModels ?? 5} deptCount={metrics.totalDepartments ?? 7} />
