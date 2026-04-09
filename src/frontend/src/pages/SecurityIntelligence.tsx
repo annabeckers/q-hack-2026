@@ -185,28 +185,6 @@ export default function SecurityIntelligence() {
           </Badge>
         </motion.div>
 
-        {/* Filter Tabs */}
-        <div className="flex gap-2 flex-wrap">
-          {(['all', 'secret', 'pii', 'slopsquat'] as const).map((tab, idx) => (
-            <motion.button
-              key={tab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.05 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setFilterType(tab)}
-              className={`px-4 py-2 rounded-full font-medium transition-all border text-sm ${
-                filterType === tab
-                  ? 'border-transparent'
-                  : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-default)]'
-              }`}
-              style={filterType === tab ? { backgroundColor: '#1e3a8a', color: '#ffffff' } : undefined}
-            >
-              {tab === 'all' ? 'All' : tab === 'slopsquat' ? 'Slopsquatting' : tab.toUpperCase()}
-            </motion.button>
-          ))}
-        </div>
 
         {/* Severity Panels */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -310,6 +288,24 @@ export default function SecurityIntelligence() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.4 }}
         >
+          {/* Filter Pills — above findings */}
+          <div className="flex gap-2 flex-wrap mb-3">
+            {(['all', 'secret', 'pii', 'slopsquat'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setFilterType(tab)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
+                  filterType === tab
+                    ? 'border-transparent text-white'
+                    : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-default)]'
+                }`}
+                style={filterType === tab ? { backgroundColor: '#1e3a8a' } : undefined}
+              >
+                {tab === 'all' ? 'All' : tab === 'slopsquat' ? 'Slopsquatting' : tab.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
           <Card header={<h3 className="font-bold text-[var(--text-primary)]">Security Findings</h3>}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

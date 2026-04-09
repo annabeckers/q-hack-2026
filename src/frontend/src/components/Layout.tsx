@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -43,6 +43,13 @@ const pageNames: Record<string, string> = {
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTo(0, 0);
+    }
+  }, [location.pathname]);
 
   const currentPageName = pageNames[location.pathname] || 'Argus';
 
@@ -64,7 +71,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         }}
       >
         {/* Logo Area */}
-        <div className="relative flex items-center h-16 px-5 border-b border-[var(--border-subtle)] overflow-hidden">
+        <div className="relative flex items-center h-20 px-5 border-b border-[var(--border-subtle)] overflow-hidden">
           {/* Accent line */}
           <motion.div
             className="absolute top-0 left-0 right-0 h-[2px]"
@@ -78,7 +85,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           <div className="flex items-center gap-3 relative z-10">
             <div className="relative flex-shrink-0">
-              <Shield size={20} className="text-[#1e3a8a]" strokeWidth={2.5} />
+              <Shield size={28} className="text-[#1e3a8a]" strokeWidth={2.5} />
             </div>
             <AnimatePresence>
               {!collapsed && (
@@ -89,7 +96,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   transition={{ delay: 0.05, duration: 0.2 }}
                   className="flex items-baseline gap-2 overflow-hidden"
                 >
-                  <span className="font-mono font-bold text-sm tracking-[0.15em] text-[#141B41]">
+                  <span className="font-mono font-bold text-lg tracking-[0.18em] text-[#141B41]">
                     ARGUS
                   </span>
                   <span className="text-[10px] text-[var(--text-tertiary)] font-medium whitespace-nowrap">
@@ -278,7 +285,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </motion.div>
 
         {/* Main content area */}
-        <main className="flex-1 overflow-y-auto bg-transparent relative">
+        <main ref={mainRef} className="flex-1 overflow-y-auto bg-transparent relative">
           {children}
         </main>
       </motion.div>
