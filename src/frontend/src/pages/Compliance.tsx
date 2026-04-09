@@ -270,7 +270,7 @@ export default function Compliance() {
     <motion.div className="p-6 lg:p-8 relative min-h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
       <div className="space-y-6 relative z-10">
         {/* Header */}
-        <motion.div ref={headerRef} initial={{ opacity: 0, y: -15 }} animate={headerInView ? { opacity: 1, y: 0 } : undefined} transition={{ duration: 0.5 }}
+        <motion.div ref={headerRef} initial={{ opacity: 0, y: -15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
           className="flex items-center justify-between"
         >
           <div>
