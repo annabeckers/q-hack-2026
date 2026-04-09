@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { ReactNode } from 'react';
 
-type CardVariant = 'default' | 'glass' | 'elevated' | 'critical';
+type CardVariant = 'default' | 'glass' | 'elevated' | 'critical' | 'premium';
 
 interface CardProps {
   children: ReactNode;
@@ -11,17 +11,20 @@ interface CardProps {
   glow?: boolean;
   className?: string;
   onClick?: () => void;
+  style?: React.CSSProperties;
 }
 
 const variantStyles: Record<CardVariant, string> = {
   default:
-    'bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-default)]',
+    'bg-white border border-[var(--border-subtle)] hover:border-[var(--border-default)] shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)]',
   glass:
-    'glass border-[var(--border-subtle)] hover:border-[var(--border-default)]',
+    'glass-premium hover:border-[var(--border-default)]',
   elevated:
-    'bg-[var(--bg-elevated)] border border-[var(--border-default)] shadow-lg hover:border-[var(--border-strong)]',
+    'bg-white border border-[var(--border-default)] shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-lg)]',
   critical:
-    'bg-[var(--bg-surface)] border-l-4 border-l-[var(--critical)] border border-[var(--border-subtle)] shadow-[var(--shadow-critical-glow)]',
+    'bg-white border-l-4 border-l-[var(--critical)] border border-[var(--border-subtle)] shadow-[var(--shadow-sm)]',
+  premium:
+    'glass-premium animated-border hover-glow',
 };
 
 export default function Card({
@@ -32,18 +35,19 @@ export default function Card({
   glow = false,
   className = '',
   onClick,
+  style,
 }: CardProps) {
   return (
     <motion.div
       whileHover={{
         y: -2,
-        boxShadow: 'var(--shadow-md)',
-        transition: { duration: 0.2 },
+        transition: { type: 'spring', stiffness: 400, damping: 25 },
       }}
-      whileTap={{ scale: 0.98 }}
+      whileTap={onClick ? { scale: 0.99 } : undefined}
       onClick={onClick}
+      style={style}
       className={`
-        rounded-[var(--radius-lg)] overflow-hidden transition-all
+        rounded-[var(--radius-lg)] overflow-hidden transition-all duration-300
         ${variantStyles[variant]}
         ${glow ? 'glow-border' : ''}
         ${onClick ? 'cursor-pointer' : ''}

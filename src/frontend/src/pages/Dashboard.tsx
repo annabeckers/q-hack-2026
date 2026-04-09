@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { motion, AnimatePresence, useInView } from 'framer-motion';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   DollarSign,
   ShieldAlert,
@@ -12,6 +12,9 @@ import {
   UserX,
   Package,
   Zap,
+  Radar,
+  ArrowUpRight,
+  ArrowDownRight,
 } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
@@ -24,7 +27,9 @@ import {
 } from '../lib/mock-data';
 import * as types from '../lib/types';
 
-// Utility for relative time formatting
+// ───
+// Utility
+// ───
 function formatRelativeTime(timestamp: string): string {
   const now = new Date();
   const date = new Date(timestamp);
@@ -32,316 +37,151 @@ function formatRelativeTime(timestamp: string): string {
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
-
   if (diffMins < 1) return 'just now';
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   return `${diffDays}d ago`;
 }
 
-// Sparkline SVG component
-function Sparkline({ values }: { values: number[] }) {
+// ───
+// Sparkline
+// ───
+function Sparkline({ values, color = 'var(--accent)' }: { values: number[]; color?: string }) {
   if (values.length < 2) return null;
-
-  const width = 60;
-  const height = 24;
-  const padding = 4;
-
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const w = 80, h = 24, pad = 2;
+  const min = Math.min(...values), max = Math.max(...values);
   const range = max - min || 1;
-
-  const points = values.map((v, i) => ({
-    x: padding + (i / (values.length - 1)) * (width - 2 * padding),
-    y: height - padding - ((v - min) / range) * (height - 2 * padding),
+  const pts = values.map((v, i) => ({
+    x: pad + (i / (values.length - 1)) * (w - 2 * pad),
+    y: h - pad - ((v - min) / range) * (h - 2 * pad),
   }));
-
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const areaD = `${pathD} L ${pts[pts.length - 1].x} ${h} L ${pts[0].x} ${h} Z`;
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="w-full">
-      <motion.path
-        d={pathD}
-        fill="none"
-        stroke="var(--accent)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        initial={{ pathLength: 0, opacity: 0 }}
-        animate={{ pathLength: 1, opacity: 1 }}
-        transition={{ duration: 1.2, ease: 'easeOut' }}
-      />
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="w-full">
+      <defs>
+        <linearGradient id={`sg-${color.replace(/[^a-z0-9]/g, '')}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <motion.path d={areaD} fill={`url(#sg-${color.replace(/[^a-z0-9]/g, '')})`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, delay: 0.3 }} />
+      <motion.path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeOut' }} />
     </svg>
   );
 }
 
-// Compliance Gauge - Animated SVG Ring
-function ComplianceGauge({ score, index }: { score: number; index: number }) {
-  const radius = 45;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (score / 100) * circumference;
-
-  const containerVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { delay: index * 0.08, duration: 0.5, ease: 'easeOut' },
-    },
-  };
-
-  const gaugeVariants = {
-    hidden: { strokeDashoffset: circumference },
-    visible: {
-      strokeDashoffset,
-      transition: { delay: 0.4, duration: 1.8, ease: 'easeOut' },
-    },
-  };
-
-  const getColor = (s: number): string => {
-    if (s >= 80) return 'var(--success)';
-    if (s >= 60) return 'var(--medium)';
-    return 'var(--critical)';
-  };
-
-  const getStatus = (s: number): string => {
-    if (s >= 80) return 'Compliant';
-    if (s >= 60) return 'Partial';
-    return 'At Risk';
-  };
+// ───
+// Compliance Ring
+// ───
+function ComplianceRing({ score, idx }: { score: number; idx: number }) {
+  const r = 40, circ = 2 * Math.PI * r;
+  const offset = circ - (score / 100) * circ;
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  const color = score >= 80 ? 'var(--success)' : score >= 60 ? 'var(--medium)' : 'var(--critical)';
 
   return (
-    <motion.div variants={containerVariants}>
-      <Card className="h-full flex flex-col items-center justify-center py-8 relative overflow-hidden group hover:shadow-lg transition-shadow">
-        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-          <span className="text-xs text-[var(--text-tertiary)]">EU AI Act</span>
-        </div>
-
-        <div className="relative w-32 h-32 flex items-center justify-center mb-4">
-          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 160 160">
-            <circle
-              cx="80"
-              cy="80"
-              r={radius}
-              fill="none"
-              stroke="var(--border-subtle)"
-              strokeWidth="6"
-              opacity="0.3"
-            />
-            <motion.circle
-              cx="80"
-              cy="80"
-              r={radius}
-              fill="none"
-              stroke={getColor(score)}
-              strokeWidth="6"
-              strokeDasharray={circumference}
-              strokeLinecap="round"
-              variants={gaugeVariants}
-              filter="drop-shadow(0 0 8px var(--accent-glow))"
-            />
+    <motion.div ref={ref} initial={{ opacity: 0, y: 20 }} animate={inView ? { opacity: 1, y: 0 } : undefined} transition={{ delay: idx * 0.08, duration: 0.5 }}>
+      <Card className="h-full flex flex-col items-center justify-center py-6">
+        <div className="relative w-24 h-24 flex items-center justify-center mb-3">
+          <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r={r} fill="none" stroke="var(--border-subtle)" strokeWidth="5" />
+            <motion.circle cx="60" cy="60" r={r} fill="none" stroke={color} strokeWidth="5" strokeDasharray={circ} strokeLinecap="round" initial={{ strokeDashoffset: circ }} animate={inView ? { strokeDashoffset: offset } : undefined} transition={{ delay: 0.3, duration: 1.8, ease: 'easeOut' }} style={{ filter: `drop-shadow(0 0 6px ${color})` }} />
           </svg>
-
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-[var(--text-primary)]">
-                <CountUp target={score} format="plain" />
-              </div>
-              <div className="text-xs text-[var(--text-tertiary)] font-medium mt-1">
-                / 100
-              </div>
-            </div>
+            <span className="text-2xl font-bold text-[var(--text-primary)] tabular-nums"><CountUp target={score} /></span>
           </div>
         </div>
-
-        <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-          {getStatus(score)}
-        </p>
+        <p className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">EU AI Act</p>
       </Card>
     </motion.div>
   );
 }
 
-// Premium KPI Card
-function KPICard({
-  title,
-  value,
-  format = 'plain',
-  trend,
-  icon: Icon,
-  sparkline,
-  index,
-  badge,
-}: {
-  title: string;
-  value?: number;
-  format?: 'currency' | 'percentage' | 'plain';
-  trend?: { direction: 'up' | 'down'; percent: number };
-  icon?: React.ComponentType<{ size: number; className?: string }>;
-  sparkline?: number[];
-  index: number;
-  badge?: string;
+// ───
+// KPI Card
+// ───
+function KPICard({ title, value, format = 'plain', trend, icon: Icon, sparkline, index, badge, children }: {
+  title: string; value?: number; format?: 'currency' | 'percentage' | 'plain';
+  trend?: { direction: 'up' | 'down'; percent: number; good?: boolean };
+  icon?: React.ComponentType<{ size: number; className?: string }>; sparkline?: number[];
+  index: number; badge?: string; children?: React.ReactNode;
 }) {
-  const containerVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { delay: index * 0.08, duration: 0.5, ease: 'easeOut' },
-    },
-  };
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  const TrendIcon = trend?.direction === 'up' ? ArrowUpRight : ArrowDownRight;
 
   return (
-    <motion.div variants={containerVariants}>
-      <Card className="h-full relative overflow-hidden group hover:shadow-lg hover:shadow-[var(--accent-glow)] transition-all duration-300">
-        {/* Icon background circle */}
-        {Icon && (
-          <div className="absolute -right-8 -top-8 w-24 h-24 bg-[var(--accent)] opacity-5 rounded-full group-hover:opacity-10 transition-opacity" />
-        )}
-
-        <div className="relative space-y-4">
-          <div className="flex items-start justify-between">
-            <h3 className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">
-              {title}
-            </h3>
+    <motion.div ref={ref} initial={{ opacity: 0, y: 20 }} animate={inView ? { opacity: 1, y: 0 } : undefined} transition={{ delay: index * 0.08, duration: 0.5 }}>
+      <Card className="h-full">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">{title}</span>
             {Icon && (
-              <div className="p-2 bg-[var(--bg-surface)] rounded-md">
-                <Icon size={16} className="text-[var(--accent)]" />
+              <div className="p-1.5 rounded-md bg-[var(--accent-muted)]">
+                <Icon size={14} className="text-[var(--accent)]" />
               </div>
             )}
           </div>
-
-          {value !== undefined ? (
-            <div className="space-y-3">
+          {value !== undefined && (
+            <div className="space-y-2">
               <div className="flex items-baseline gap-2">
-                <div className="text-5xl font-bold text-[var(--text-primary)] leading-none">
+                <span className="text-3xl font-bold text-[var(--text-primary)] tabular-nums tracking-tight">
                   <CountUp target={value} format={format} />
-                </div>
+                </span>
                 {trend && (
-                  <div
-                    className={`text-sm font-semibold flex items-center gap-1 px-2 py-1 rounded ${
-                      trend.direction === 'up'
-                        ? 'bg-[var(--critical-muted)] text-[var(--critical)]'
-                        : 'bg-[var(--success-muted)] text-[var(--success)]'
+                  <motion.span initial={{ opacity: 0 }} animate={inView ? { opacity: 1 } : undefined} transition={{ delay: 0.4 }}
+                    className={`inline-flex items-center gap-0.5 text-xs font-semibold px-1.5 py-0.5 rounded ${
+                      trend.good ? 'bg-[var(--success-muted)] text-[var(--success)]' : 'bg-[var(--critical-muted)] text-[var(--critical)]'
                     }`}
                   >
-                    <span>{trend.direction === 'up' ? '↑' : '↓'}</span>
-                    {trend.percent}%
-                  </div>
+                    <TrendIcon size={12} />{trend.percent}%
+                  </motion.span>
                 )}
               </div>
-
-              {sparkline && sparkline.length > 1 && (
-                <div className="h-6 -mx-2">
-                  <Sparkline values={sparkline} />
-                </div>
-              )}
-            </div>
-          ) : null}
-
-          {badge && (
-            <div className="flex gap-2 pt-2">
-              <Badge variant="critical" className="text-xs animate-pulse">
-                {badge}
-              </Badge>
+              {sparkline && sparkline.length > 1 && <div className="h-6"><Sparkline values={sparkline} /></div>}
             </div>
           )}
+          {badge && <Badge variant="critical" size="sm" dot>{badge}</Badge>}
+          {children}
         </div>
       </Card>
     </motion.div>
   );
 }
 
-// Severity Breakdown Chart - Premium styling
+// ───
+// Threat Distribution
+// ───
 function ThreatDistribution({ distribution }: { distribution: types.SeverityDistribution }) {
-  const chartData = [
-    {
-      category: 'Secrets',
-      critical: distribution.secrets.critical,
-      high: distribution.secrets.high,
-      medium: distribution.secrets.medium,
-      total: distribution.secrets.critical + distribution.secrets.high + distribution.secrets.medium,
-    },
-    {
-      category: 'PII',
-      critical: distribution.pii.critical,
-      high: distribution.pii.high,
-      medium: distribution.pii.medium,
-      total: distribution.pii.critical + distribution.pii.high + distribution.pii.medium,
-    },
-    {
-      category: 'Slopsquatting',
-      critical: distribution.slopsquat.critical,
-      high: distribution.slopsquat.high,
-      medium: distribution.slopsquat.medium,
-      total: distribution.slopsquat.critical + distribution.slopsquat.high + distribution.slopsquat.medium,
-    },
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  const data = [
+    { category: 'Secrets', critical: distribution.secrets.critical, high: distribution.secrets.high, medium: distribution.secrets.medium },
+    { category: 'PII', critical: distribution.pii.critical, high: distribution.pii.high, medium: distribution.pii.medium },
+    { category: 'Slopsquatting', critical: distribution.slopsquat.critical, high: distribution.slopsquat.high, medium: distribution.slopsquat.medium },
   ];
-
-  const totalFindings = chartData.reduce((sum, d) => sum + d.total, 0);
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { duration: 0.6, ease: 'easeOut' },
-    },
-  };
+  const total = data.reduce((s, d) => s + d.critical + d.high + d.medium, 0);
 
   return (
-    <motion.div variants={containerVariants}>
-      <Card header={
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-[var(--text-primary)]">
-            Threat Distribution
-          </h3>
-          <Badge variant="default" className="text-xs">
-            {totalFindings} total
-          </Badge>
-        </div>
-      } className="relative overflow-hidden">
-        <div className="space-y-6">
-          {/* Legend */}
-          <div className="flex gap-6 text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-[var(--critical)]" />
-              <span className="text-[var(--text-secondary)]">Critical</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-[var(--high)]" />
-              <span className="text-[var(--text-secondary)]">High</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-[var(--medium)]" />
-              <span className="text-[var(--text-secondary)]">Medium</span>
-            </div>
+    <motion.div ref={ref} initial={{ opacity: 0, y: 20 }} animate={inView ? { opacity: 1, y: 0 } : undefined} transition={{ duration: 0.5 }}>
+      <Card header={<div className="flex items-center justify-between"><div className="flex items-center gap-2"><Radar size={16} className="text-[var(--accent)]" /><span className="font-semibold text-[var(--text-primary)] text-sm">Threat Distribution</span></div><span className="text-xs text-[var(--text-tertiary)] tabular-nums">{total} total</span></div>}>
+        <div className="space-y-4">
+          <div className="flex gap-4 text-[11px]">
+            {[{ l: 'Critical', c: 'var(--critical)' }, { l: 'High', c: 'var(--high)' }, { l: 'Medium', c: 'var(--medium)' }].map(i =>
+              <div key={i.l} className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm" style={{ background: i.c }} /><span className="text-[var(--text-secondary)]">{i.l}</span></div>
+            )}
           </div>
-
-          {/* Chart */}
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
-              <XAxis
-                dataKey="category"
-                stroke="var(--border-subtle)"
-                tick={{ fill: 'var(--text-tertiary)', fontSize: 12 }}
-                axisLine={{ stroke: 'var(--border-subtle)' }}
-              />
-              <YAxis
-                stroke="var(--border-subtle)"
-                tick={{ fill: 'var(--text-tertiary)', fontSize: 12 }}
-                axisLine={{ stroke: 'var(--border-subtle)' }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'var(--bg-elevated)',
-                  border: '1px solid var(--border-default)',
-                  borderRadius: '6px',
-                  boxShadow: 'var(--shadow-lg)',
-                }}
-                cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
-              />
-              <Bar dataKey="critical" fill="var(--critical)" stackId="severity" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="high" fill="var(--high)" stackId="severity" />
-              <Bar dataKey="medium" fill="var(--medium)" stackId="severity" />
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+              <XAxis dataKey="category" stroke="var(--border-subtle)" tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }} axisLine={{ stroke: 'var(--border-subtle)' }} />
+              <YAxis stroke="var(--border-subtle)" tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }} axisLine={{ stroke: 'var(--border-subtle)' }} />
+              <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid var(--border-default)', borderRadius: '8px', boxShadow: '0 8px 24px rgba(20,27,65,0.1)' }} cursor={{ fill: 'rgba(20,27,65,0.02)' }} />
+              <Bar dataKey="critical" fill="var(--critical)" stackId="s" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="high" fill="var(--high)" stackId="s" />
+              <Bar dataKey="medium" fill="var(--medium)" stackId="s" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -350,88 +190,37 @@ function ThreatDistribution({ distribution }: { distribution: types.SeverityDist
   );
 }
 
-// Recent Detections Timeline
+// ───
+// Recent Detections
+// ───
 function RecentDetections({ findings }: { findings: types.Finding[] }) {
-  const sorted = findings
-    .sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime())
-    .slice(0, 8);
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  const sorted = findings.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime()).slice(0, 6);
 
-  const getTypeIcon = (type: types.FindingType) => {
+  const icon = (type: types.FindingType) => {
     switch (type) {
-      case 'secret':
-        return <KeyRound size={14} className="text-[var(--critical)]" />;
-      case 'pii':
-        return <UserX size={14} className="text-[var(--critical)]" />;
-      case 'slopsquat':
-        return <Package size={14} className="text-[var(--high)]" />;
-      default:
-        return <Zap size={14} className="text-[var(--medium)]" />;
+      case 'secret': return <KeyRound size={13} className="text-[var(--critical)]" />;
+      case 'pii': return <UserX size={13} className="text-[var(--critical)]" />;
+      case 'slopsquat': return <Package size={13} className="text-[var(--high)]" />;
+      default: return <Zap size={13} className="text-[var(--medium)]" />;
     }
   };
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.05,
-        delayChildren: 0.1,
-      },
-    },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, x: -10 },
-    visible: { opacity: 1, x: 0, transition: { duration: 0.3 } },
-  };
-
   return (
-    <motion.div variants={containerVariants} initial="hidden" whileInView="visible">
-      <Card header={
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-[var(--text-primary)]">
-            Recent Detections
-          </h3>
-          <a href="/leaks" className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] font-semibold">
-            View All →
-          </a>
-        </div>
-      } className="relative overflow-hidden">
-        <div className="space-y-2 max-h-[400px] overflow-y-auto">
+    <motion.div ref={ref} initial={{ opacity: 0, y: 20 }} animate={inView ? { opacity: 1, y: 0 } : undefined} transition={{ duration: 0.5 }}>
+      <Card header={<div className="flex items-center justify-between"><span className="font-semibold text-[var(--text-primary)] text-sm">Recent Detections</span><motion.a href="/leaks" whileHover={{ x: 3 }} className="text-[11px] text-[var(--accent)] font-semibold">View All →</motion.a></div>}>
+        <div className="space-y-1">
           {sorted.map((item, idx) => (
-            <motion.div
-              key={item.id}
-              variants={itemVariants}
-              className={`flex items-start gap-3 p-3 rounded-md transition-colors ${
-                idx % 2 === 0 ? 'bg-[var(--bg-2)]' : ''
-              } hover:bg-[var(--bg-surface-hover)]`}
+            <motion.div key={item.id} initial={{ opacity: 0, x: -10 }} animate={inView ? { opacity: 1, x: 0 } : undefined} transition={{ delay: idx * 0.05 }}
+              className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-[var(--bg-2)] transition-colors cursor-pointer group"
             >
-              <div className="pt-0.5 flex-shrink-0">
-                {getTypeIcon(item.type)}
-              </div>
+              <div className="flex-shrink-0">{icon(item.type)}</div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge
-                    variant={item.severity}
-                    className="text-xs"
-                  >
-                    {item.severity.toUpperCase()}
-                  </Badge>
-                  <span className="text-xs text-[var(--text-secondary)]">
-                    {item.type.toUpperCase()}
-                  </span>
-                </div>
-                <p className="text-sm font-medium text-[var(--text-primary)] mt-1 truncate">
-                  {item.category}
-                </p>
-                <div className="flex gap-3 mt-1 text-xs text-[var(--text-tertiary)]">
-                  <span>{item.department}</span>
-                  <span>•</span>
-                  <span>{item.provider}</span>
-                  <span>•</span>
-                  <span>{formatRelativeTime(item.detectedAt)}</span>
-                </div>
+                <p className="text-[13px] font-medium text-[var(--text-primary)] truncate group-hover:text-[var(--accent)] transition-colors">{item.category}</p>
+                <p className="text-[11px] text-[var(--text-tertiary)]">{item.department} · {item.provider} · {formatRelativeTime(item.detectedAt)}</p>
               </div>
+              <Badge variant={item.severity} size="sm">{item.severity.toUpperCase()}</Badge>
             </motion.div>
           ))}
         </div>
@@ -440,126 +229,72 @@ function RecentDetections({ findings }: { findings: types.Finding[] }) {
   );
 }
 
-// Real-Time Alert Feed - THE WOW FEATURE
-interface StreamingAlert extends types.Alert {
-  displayTime: string;
-  glowing: boolean;
-}
+// ───
+// Live Threat Feed
+// ───
+interface StreamAlert extends types.Alert { displayTime: string; glowing: boolean; }
 
 function LiveThreatFeed() {
-  const [alerts, setAlerts] = useState<StreamingAlert[]>([]);
-  const [alertQueue, setAlertQueue] = useState<types.Alert[]>(mockAlerts.slice().reverse());
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [alerts, setAlerts] = useState<StreamAlert[]>([]);
+  const [queue, setQueue] = useState<types.Alert[]>(mockAlerts.slice().reverse());
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setAlertQueue((queue) => {
-        if (queue.length === 0) {
-          // Cycle back
-          return mockAlerts.slice().reverse();
-        }
-
-        const newAlert = queue[0];
-        const updatedQueue = queue.slice(1);
-
-        setAlerts((current) => {
-          const updated = [
-            {
-              ...newAlert,
-              displayTime: formatRelativeTime(newAlert.timestamp),
-              glowing: true,
-            },
-            ...current.map(a => ({ ...a, glowing: false })),
-          ];
-          return updated.slice(0, 20);
-        });
-
-        return updatedQueue;
+    const iv = setInterval(() => {
+      setQueue(q => {
+        if (q.length === 0) return mockAlerts.slice().reverse();
+        const next = q[0];
+        setAlerts(curr => [
+          { ...next, displayTime: formatRelativeTime(next.timestamp), glowing: true },
+          ...curr.map(a => ({ ...a, glowing: false })),
+        ].slice(0, 20));
+        return q.slice(1);
       });
     }, 2500);
-
-    return () => clearInterval(interval);
+    return () => clearInterval(iv);
   }, []);
 
-  const getAlertIcon = (type: types.AlertType) => {
-    switch (type) {
-      case 'secret':
-        return <KeyRound size={14} />;
-      case 'pii':
-        return <UserX size={14} />;
-      case 'slopsquat':
-        return <Package size={14} />;
-      case 'anomaly':
-        return <Zap size={14} />;
-    }
+  const getIcon = (t: types.AlertType) => {
+    switch (t) { case 'secret': return <KeyRound size={13} />; case 'pii': return <UserX size={13} />; case 'slopsquat': return <Package size={13} />; case 'anomaly': return <Zap size={13} />; }
   };
+  const getColor = (s: string) => s === 'critical' ? 'var(--critical)' : s === 'high' ? 'var(--high)' : 'var(--medium)';
 
   return (
     <Card header={
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-[var(--text-primary)]">
-          Live Threat Feed
-        </h3>
-        <div className="flex items-center gap-2">
-          <motion.div
-            className="w-2 h-2 bg-[var(--critical)] rounded-full"
-            animate={{ scale: [1, 1.3, 1] }}
-            transition={{ repeat: Infinity, duration: 1.5 }}
-          />
-          <span className="text-xs font-bold text-[var(--critical)] uppercase tracking-wider">
-            Live
-          </span>
+        <span className="font-semibold text-[var(--text-primary)] text-sm">Live Threat Feed</span>
+        <div className="flex items-center gap-1.5">
+          <div className="relative"><motion.div className="w-2 h-2 bg-[var(--critical)] rounded-full" animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} /><motion.div className="absolute inset-0 w-2 h-2 bg-[var(--critical)] rounded-full" animate={{ scale: [1, 2.5], opacity: [0.5, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} /></div>
+          <span className="text-[10px] font-bold text-[var(--critical)] uppercase tracking-wide">Live</span>
         </div>
       </div>
-    } className="relative h-[600px] flex flex-col overflow-hidden">
-      <div ref={containerRef} className="flex-1 overflow-y-auto space-y-1.5">
-        <AnimatePresence mode="popLayout">
-          {alerts.map((alert, idx) => (
-            <motion.div
-              key={alert.id}
-              layout
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              transition={{ duration: 0.25 }}
-              className={`flex gap-3 p-3 rounded-md border-l-4 ${
-                alert.glowing
-                  ? `bg-[var(--${alert.severity}-muted)] border-l-[var(--${alert.severity})] shadow-${alert.severity}-glow`
-                  : `bg-[var(--bg-surface)] border-l-[var(--${alert.severity})]`
-              } transition-all duration-300`}
-              style={{
-                boxShadow: alert.glowing ? `0 0 12px var(--${alert.severity}-glow)` : 'none',
-              }}
-            >
-              {/* Severity bar indicator */}
-              <div className={`w-1 rounded-full flex-shrink-0 bg-[var(--${alert.severity})]`} />
+    } className="relative flex flex-col overflow-hidden" style={{ height: 'calc(100%)' }}>
+      {/* Scan line */}
+      <motion.div className="absolute left-0 right-0 h-[1px] z-10 pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent, rgba(30,58,138,0.2), transparent)' }} animate={{ top: ['0%', '100%'] }} transition={{ duration: 5, repeat: Infinity, ease: 'linear' }} />
 
-              <div className="flex-1 min-w-0 py-0.5">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className={`text-[var(--${alert.severity})]`}>
-                    {getAlertIcon(alert.type)}
-                  </div>
-                  <Badge variant={alert.severity} className="text-xs">
-                    {alert.severity.toUpperCase()}
-                  </Badge>
-                  <span className="text-xs text-[var(--text-tertiary)]">
-                    {alert.displayTime}
-                  </span>
+      <div className="flex-1 overflow-y-auto space-y-1 relative">
+        <AnimatePresence mode="popLayout">
+          {alerts.map(a => (
+            <motion.div key={a.id} layout initial={{ opacity: 0, y: -20, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: 30, scale: 0.95 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+              className="flex gap-2.5 p-2.5 rounded-lg border-l-2 transition-all"
+              style={{ borderLeftColor: getColor(a.severity), background: a.glowing ? 'rgba(30,58,138,0.03)' : 'transparent', boxShadow: a.glowing ? `0 0 12px ${getColor(a.severity)}15` : 'none' }}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                  <span style={{ color: getColor(a.severity) }}>{getIcon(a.type)}</span>
+                  <Badge variant={a.severity as 'critical' | 'high' | 'medium'} size="sm">{a.severity.toUpperCase()}</Badge>
+                  <span className="text-[10px] text-[var(--text-tertiary)]">{a.displayTime}</span>
+                  {a.glowing && <motion.span initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} className="text-[9px] font-bold text-[var(--critical)] bg-[var(--critical-muted)] px-1 py-0.5 rounded">NEW</motion.span>}
                 </div>
-                <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                  {alert.title}
-                </p>
-                <p className="text-xs text-[var(--text-tertiary)] mt-0.5 truncate">
-                  {alert.department} • {alert.provider}
-                </p>
+                <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">{a.title}</p>
+                <p className="text-[11px] text-[var(--text-tertiary)] truncate">{a.department} · {a.provider}</p>
               </div>
             </motion.div>
           ))}
         </AnimatePresence>
-
         {alerts.length === 0 && (
-          <div className="flex items-center justify-center h-32 text-[var(--text-tertiary)]">
-            <p className="text-sm">Listening for live alerts...</p>
+          <div className="flex flex-col items-center justify-center h-24 text-[var(--text-tertiary)] gap-2">
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}><Radar size={20} className="text-[var(--accent)]" /></motion.div>
+            <p className="text-xs">Scanning...</p>
           </div>
         )}
       </div>
@@ -567,101 +302,50 @@ function LiveThreatFeed() {
   );
 }
 
+// ───
 // Models Indicator
+// ───
 function ModelsActive() {
-  const providers = [
-    { name: 'GPT-4o', color: 'var(--openai)' },
-    { name: 'Claude', color: 'var(--anthropic)' },
-    { name: 'Gemini', color: 'var(--google)' },
-    { name: 'Mistral', color: 'var(--mistral)' },
-    { name: 'Local', color: 'var(--local)' },
-  ];
-
+  const p = [{ n: 'GPT-4o', c: 'var(--openai)' }, { n: 'Claude', c: 'var(--anthropic)' }, { n: 'Gemini', c: 'var(--google)' }, { n: 'Mistral', c: 'var(--mistral)' }, { n: 'Local', c: 'var(--local)' }];
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2 items-center">
-        {providers.map((p, i) => (
-          <motion.div
-            key={p.name}
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: i * 0.06, duration: 0.3 }}
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: p.color }}
-            title={p.name}
+    <div className="space-y-2 mt-1">
+      <div className="flex gap-1.5">
+        {p.map((m, i) => (
+          <motion.div key={m.n} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.5 + i * 0.06, type: 'spring', stiffness: 400 }} whileHover={{ scale: 1.4 }}
+            className="w-2.5 h-2.5 rounded-full cursor-pointer" style={{ background: m.c }} title={m.n}
           />
         ))}
       </div>
-      <p className="text-xs text-[var(--text-secondary)]">
-        5 providers across 7 departments
-      </p>
+      <p className="text-[11px] text-[var(--text-tertiary)]">5 providers · 7 departments</p>
     </div>
   );
 }
 
-// Bottom Stats Bar
+// ───
+// Insight Bar
+// ───
 function InsightBar() {
-  const stats = [
-    {
-      icon: TrendingUp,
-      label: 'Top Cost',
-      value: 'Engineering',
-      detail: '€18.2K',
-    },
-    {
-      icon: AlertTriangle,
-      label: 'Riskiest Model',
-      value: 'GPT-4o',
-      detail: '4.2 halluc/1K',
-    },
-    {
-      icon: EyeOff,
-      label: 'Shadow AI',
-      value: '3 providers',
-      detail: 'unapproved',
-    },
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  const items = [
+    { icon: TrendingUp, label: 'Top cost driver', value: 'Engineering', detail: '€18.2K/month', color: 'var(--accent)' },
+    { icon: AlertTriangle, label: 'Riskiest model', value: 'GPT-4o', detail: '4.2 hallucinations/1K', color: 'var(--high)' },
+    { icon: EyeOff, label: 'Shadow AI', value: '3 unapproved', detail: 'providers detected', color: 'var(--critical)' },
   ];
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-        delayChildren: 0.4,
-      },
-    },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
-  };
-
   return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      whileInView="visible"
-      className="grid grid-cols-3 gap-4"
-    >
-      {stats.map((stat) => (
-        <motion.div key={stat.label} variants={itemVariants}>
-          <Card className="group hover:shadow-lg transition-all hover:shadow-[var(--accent-glow)]">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 bg-[var(--bg-surface)] rounded-lg group-hover:bg-[var(--bg-surface-hover)] transition-colors">
-                <stat.icon size={16} className="text-[var(--accent)]" />
+    <motion.div ref={ref} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {items.map((s, i) => (
+        <motion.div key={s.label} initial={{ opacity: 0, y: 15 }} animate={inView ? { opacity: 1, y: 0 } : undefined} transition={{ delay: i * 0.08 }}>
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg" style={{ background: `color-mix(in srgb, ${s.color} 12%, transparent)` }}>
+                <s.icon size={15} style={{ color: s.color }} />
               </div>
-              <div className="flex-1">
-                <p className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">
-                  {stat.label}
-                </p>
-                <p className="text-sm font-bold text-[var(--text-primary)] mt-1">
-                  {stat.value}
-                </p>
-                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-                  {stat.detail}
-                </p>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">{s.label}</p>
+                <p className="text-sm font-bold text-[var(--text-primary)] mt-0.5">{s.value}</p>
+                <p className="text-[11px] text-[var(--text-tertiary)]">{s.detail}</p>
               </div>
             </div>
           </Card>
@@ -671,131 +355,72 @@ function InsightBar() {
   );
 }
 
-// Main Dashboard Component
+// ═══════════════════════════════════════════
+// MAIN DASHBOARD
+// ═══════════════════════════════════════════
 export default function Dashboard() {
   const { metrics, findings, compliance } = mockDashboardSummary;
-  const mockCostTrend = [1.2, 1.5, 1.8, 2.1, 2.4, 2.8];
-
-  const pageVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        duration: 0.6,
-        ease: 'easeOut',
-      },
-    },
-  };
-
-  const headerVariants = {
-    hidden: { opacity: 0, y: -20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { duration: 0.6, ease: 'easeOut' },
-    },
-  };
+  const costTrend = [1.2, 1.5, 1.8, 2.1, 2.4, 2.8, 3.1, 2.9];
+  const [activeRange, setActiveRange] = useState(0);
 
   return (
-    <motion.div
-      variants={pageVariants}
-      initial="hidden"
-      animate="visible"
-      className="min-h-screen bg-[var(--bg-0)] p-6 md:p-8"
-    >
-      <div className="max-w-[1600px] mx-auto space-y-8">
-        {/* Page Header with Scan-line Effect */}
-        <motion.div variants={headerVariants} className="relative">
-          <div className="space-y-2">
-            <div className="flex items-baseline gap-4">
-              <h1 className="text-5xl md:text-6xl font-black text-[var(--text-primary)]">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }} className="p-6 lg:p-8 relative min-h-full">
+      <div className="space-y-6 relative z-10">
+        {/* Header */}
+        <motion.div initial={{ opacity: 0, y: -15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="text-3xl lg:text-4xl font-bold text-[var(--text-primary)] tracking-tight">
                 Command Center
               </h1>
-              <div className="h-1 flex-1 bg-gradient-to-r from-[var(--accent)] to-transparent rounded-full" />
+              <p className="text-sm text-[var(--text-tertiary)] mt-1 flex items-center gap-2">
+                Real-time AI usage monitoring
+                <span className="inline-flex items-center gap-1">
+                  <motion.span className="w-1.5 h-1.5 bg-[var(--success)] rounded-full" animate={{ opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 1.5 }} />
+                  <span className="text-[var(--success)] text-xs font-medium">Live</span>
+                </span>
+              </p>
             </div>
-            <div className="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
-              <span>Real-time AI usage monitoring</span>
-              <span>•</span>
-              <span className="flex items-center gap-1.5">
-                <motion.span
-                  className="w-1.5 h-1.5 bg-[var(--success)] rounded-full"
-                  animate={{ scale: [1, 1.5, 1] }}
-                  transition={{ repeat: Infinity, duration: 1.2 }}
-                />
-                Last updated: 2 min ago
-              </span>
+            <div className="flex gap-1.5">
+              {['24h', '7d', '30d', '90d'].map((r, i) => (
+                <motion.button key={r} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 + i * 0.04 }}
+                  onClick={() => setActiveRange(i)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                    i === activeRange
+                      ? 'text-white border-transparent'
+                      : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-default)]'
+                  }`}
+                  style={i === activeRange ? { backgroundColor: '#1e3a8a' } : undefined}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  {r}
+                </motion.button>
+              ))}
             </div>
-          </div>
-
-          {/* Time Range Selector */}
-          <div className="mt-4 flex gap-2">
-            {['24h', '7d', '30d', '90d'].map((range, idx) => (
-              <motion.button
-                key={range}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: idx * 0.05 }}
-                className={`px-4 py-2 rounded-md text-xs font-semibold transition-all ${
-                  idx === 0
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]'
-                }`}
-              >
-                {range}
-              </motion.button>
-            ))}
           </div>
         </motion.div>
 
-        {/* KPI Strip - 4 Premium Metric Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPICard
-            title="Total AI Cost"
-            value={metrics.totalCost}
-            format="currency"
-            trend={{ direction: 'up', percent: 12.3 }}
-            icon={DollarSign}
-            sparkline={mockCostTrend}
-            index={0}
-          />
-          <KPICard
-            title="Critical Findings"
-            value={findings.criticalCount}
-            format="plain"
-            icon={ShieldAlert}
-            badge="8 NEW"
-            index={1}
-          />
-          <ComplianceGauge score={compliance.complianceScore} index={2} />
-          <KPICard
-            title="Models Active"
-            value={5}
-            format="plain"
-            icon={Brain}
-            index={3}
-          >
-            <ModelsActive />
-          </KPICard>
+        {/* KPI Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KPICard title="Total AI Cost" value={metrics.totalCost} format="currency" trend={{ direction: 'up', percent: 12.3, good: false }} icon={DollarSign} sparkline={costTrend} index={0} />
+          <KPICard title="Critical Findings" value={findings.criticalCount} icon={ShieldAlert} badge="8 unresolved" index={1} />
+          <ComplianceRing score={compliance.complianceScore} idx={2} />
+          <KPICard title="Active Models" value={5} icon={Brain} index={3}><ModelsActive /></KPICard>
         </div>
 
-        {/* Main Grid: 2-column (7fr 5fr) + Live Feed on right */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 auto-rows-max">
-          {/* Left Column (wider) */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Threat Distribution Chart */}
+        {/* Main Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 space-y-4">
             <ThreatDistribution distribution={mockSeverityDistribution} />
-
-            {/* Recent Detections Timeline */}
             <RecentDetections findings={mockFindings} />
           </div>
-
-          {/* Right Column: Live Threat Feed (full height) */}
-          <div className="lg:row-span-2">
+          <div className="min-h-[500px]">
             <LiveThreatFeed />
           </div>
         </div>
 
-        {/* Bottom Insight Bar */}
+        {/* Insight Bar */}
         <InsightBar />
       </div>
     </motion.div>

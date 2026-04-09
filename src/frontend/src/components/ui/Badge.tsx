@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { LucideIcon } from 'lucide-react';
 
-type BadgeVariant = 'critical' | 'high' | 'medium' | 'success' | 'info' | 'neutral';
+type BadgeVariant = 'critical' | 'high' | 'medium' | 'success' | 'info' | 'neutral' | 'default';
 type BadgeSize = 'sm' | 'md';
 
 interface BadgeProps {
@@ -27,6 +27,8 @@ const variantStyles: Record<BadgeVariant, string> = {
     'bg-[var(--info-muted)] text-[var(--info)] border border-[var(--info)]/30',
   neutral:
     'bg-[var(--accent-muted)] text-[var(--text-secondary)] border border-[var(--border-default)]',
+  default:
+    'bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-default)]',
 };
 
 const sizeStyles: Record<BadgeSize, string> = {
@@ -41,6 +43,7 @@ const dotColors: Record<BadgeVariant, string> = {
   success: 'bg-[var(--success)]',
   info: 'bg-[var(--info)]',
   neutral: 'bg-[var(--text-secondary)]',
+  default: 'bg-[var(--text-secondary)]',
 };
 
 export default function Badge({
@@ -59,16 +62,16 @@ export default function Badge({
       className={`
         inline-flex items-center gap-1.5 rounded-full
         font-medium tracking-wide font-semibold
-        border transition-all
+        border transition-all duration-200
         ${sizeStyles[size]}
         ${variantStyles[variant]}
-        ${variant === 'critical' ? 'pulse-critical' : ''}
+        ${variant === 'critical' ? 'shadow-[0_0_8px_var(--critical-glow)]' : ''}
         ${className}
       `}
     >
       {dot && (
         <motion.div
-          animate={{ scale: [1, 1.2, 1] }}
+          animate={{ scale: [1, 1.3, 1], opacity: [0.8, 1, 0.8] }}
           transition={{ duration: 2, repeat: Infinity }}
           className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColors[variant]}`}
         />
