@@ -238,25 +238,33 @@ export default function Compliance() {
   const headerInView = useInView(headerRef, { once: true });
 
   // ── API calls with mock fallback ──
-  const { data: complianceScore } = useApiCall(
+  const { data: complianceScore, loading: l1 } = useApiCall(
     () => apiClient.getComplianceGauge(),
     mockComplianceScore
   );
 
-  const { data: dataFlow } = useApiCall(
+  const { data: dataFlow, loading: l2 } = useApiCall(
     () => apiClient.getDataFlow(),
     mockDataFlow
   );
 
-  const { data: providerDPA } = useApiCall(
+  const { data: providerDPA, loading: l3 } = useApiCall(
     () => apiClient.getProviderDPA(),
     mockProviderDPA
   );
 
-  const { data: shadowAI } = useApiCall(
+  const { data: shadowAI, loading: l4 } = useApiCall(
     () => apiClient.getShadowAI(),
     mockShadowAI
   );
+
+  if (l1 || l2 || l3 || l4) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#1e3a8a] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <motion.div className="p-6 lg:p-8 relative min-h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>

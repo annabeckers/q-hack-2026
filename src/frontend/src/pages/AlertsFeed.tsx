@@ -181,7 +181,7 @@ function AlertItem({ alert, onStatusChange, isNew, index }: AlertItemProps) {
 
 export default function AlertsFeed() {
   // ── API call with mock fallback ──
-  const { data: initialAlerts } = useApiCall(
+  const { data: initialAlerts, loading } = useApiCall(
     () => apiClient.getAlerts({ limit: 50 }).then(r => {
       if (Array.isArray(r)) return r as Alert[];
       if (r && 'alerts' in r) return (r as any).alerts as Alert[];
@@ -190,7 +190,7 @@ export default function AlertsFeed() {
     mockAlerts
   );
 
-  const [alerts, setAlerts] = useState<Alert[]>(mockAlerts.slice(0, 8));
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'high' | 'medium'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'secret' | 'pii' | 'slopsquat' | 'anomaly'>('all');
   const [newAlertIds, setNewAlertIds] = useState<Set<string>>(new Set());
@@ -272,7 +272,7 @@ export default function AlertsFeed() {
             });
           }, 3000);
         }
-      }, 4000);
+      }, 60000);
     }
 
     return () => {
@@ -293,6 +293,14 @@ export default function AlertsFeed() {
       prev.map((alert) => (alert.id === id ? { ...alert, status } : alert))
     );
   };
+
+  if (loading) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#1e3a8a] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <motion.div

@@ -409,19 +409,19 @@ function InsightBar() {
 // ═══════════════════════════════════════════
 export default function Dashboard() {
   // ── API calls with mock fallback ──
-  const { data: summaryData } = useApiCall(
+  const { data: summaryData, loading: l1 } = useApiCall(
     () => apiClient.getDashboardSummary(),
     mockDashboardSummary
   );
-  const { data: severityData } = useApiCall(
+  const { data: severityData, loading: l2 } = useApiCall(
     () => apiClient.getSeverityDistribution(),
     mockSeverityDistribution
   );
-  const { data: alertsData } = useApiCall(
+  const { data: alertsData, loading: l3 } = useApiCall(
     () => apiClient.getAlerts({ limit: 50 }),
     mockAlerts
   );
-  const { data: findingsData } = useApiCall(
+  const { data: findingsData, loading: l4 } = useApiCall(
     () => apiClient.getFindings({ limit: 20 }).then(r => {
       // Backend may return { items, count } or array
       if (Array.isArray(r)) return r;
@@ -443,6 +443,14 @@ export default function Dashboard() {
   const normalizedAlerts: types.Alert[] = Array.isArray(alertsData)
     ? alertsData
     : (alertsData as any)?.alerts ?? mockAlerts;
+
+  if (l1 || l2 || l3 || l4) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#1e3a8a] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }} className="p-6 lg:p-8 relative min-h-full">
