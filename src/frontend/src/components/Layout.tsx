@@ -7,18 +7,16 @@ import {
   Brain,
   Scale,
   Bell,
-  Sun,
-  Moon,
   ChevronLeft,
   ChevronRight,
-  Search,
+  Activity,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { useTheme } from '../hooks/useTheme.tsx';
+import { motion, AnimatePresence } from 'framer-motion';
+import AnimatedBackground from './AnimatedBackground';
 
 interface NavItem {
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; size?: number }>;
   path: string;
   hasAlert?: boolean;
   isPulsing?: boolean;
@@ -26,7 +24,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Command Center', icon: LayoutDashboard, path: '/' },
-  { label: 'Security Intel', icon: Shield, path: '/leaks', hasAlert: false },
+  { label: 'Security Intel', icon: Shield, path: '/leaks' },
   { label: 'Cost Analytics', icon: DollarSign, path: '/costs' },
   { label: 'Model Analytics', icon: Brain, path: '/models' },
   { label: 'Compliance', icon: Scale, path: '/compliance' },
@@ -45,113 +43,141 @@ const pageNames: Record<string, string> = {
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
-  const { theme, toggleTheme } = useTheme();
-  const [notificationCount] = useState(3);
 
   const currentPageName = pageNames[location.pathname] || 'Argus';
 
   return (
-    <div className="flex h-screen bg-[var(--bg-0)] text-[var(--text-primary)]">
-      {/* Sidebar */}
+    <div className="flex h-screen w-full bg-[var(--bg-0)] text-[var(--text-primary)] overflow-hidden">
+      {/* Animated particle background */}
+      <AnimatedBackground />
+
+      {/* Sidebar — clean white enterprise style */}
       <motion.div
         animate={{ width: collapsed ? 72 : 260 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="fixed left-0 top-0 h-full bg-[var(--bg-1)] border-r border-[var(--border-subtle)] flex flex-col overflow-hidden"
+        className="fixed left-0 top-0 h-full flex flex-col overflow-hidden z-30"
+        style={{
+          background: 'rgba(255, 255, 255, 0.95)',
+          backdropFilter: 'blur(24px) saturate(180%)',
+          borderRight: '1px solid rgba(20, 27, 65, 0.08)',
+          boxShadow: '2px 0 12px rgba(20, 27, 65, 0.03)',
+        }}
       >
         {/* Logo Area */}
-        <div className="relative flex items-center justify-center h-24 border-b border-[var(--border-subtle)]">
-          <div className="flex items-center gap-2">
-            <motion.div
-              animate={{ opacity: [0.6, 1, 0.6] }}
-              transition={{ duration: 3, repeat: Infinity }}
-              className="absolute inset-0 top-0 left-1/2 transform -translate-x-1/2 h-1 bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent"
-              style={{
-                background: 'linear-gradient(90deg, transparent, var(--accent), transparent)',
-                opacity: 0.3,
-              }}
-            />
-            <Shield
-              size={24}
-              className="text-[var(--accent)] relative z-10"
-              strokeWidth={3}
-            />
-            {!collapsed && (
-              <motion.div
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }}
-                transition={{ delay: 0.1 }}
-                className="flex flex-col"
-              >
-                <span className="font-mono font-bold text-lg tracking-widest gradient-text">
-                  ARGUS
-                </span>
-                <span className="text-[10px] text-[var(--text-tertiary)] font-medium tracking-wide">
-                  AI Intelligence
-                </span>
-              </motion.div>
-            )}
+        <div className="relative flex items-center h-16 px-5 border-b border-[var(--border-subtle)] overflow-hidden">
+          {/* Accent line */}
+          <motion.div
+            className="absolute top-0 left-0 right-0 h-[2px]"
+            style={{
+              background: 'linear-gradient(90deg, #1e3a8a, #3b82f6, #1e3a8a)',
+              backgroundSize: '200% 100%',
+            }}
+            animate={{ backgroundPosition: ['0% 50%', '200% 50%'] }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
+          />
+
+          <div className="flex items-center gap-3 relative z-10">
+            <div className="relative flex-shrink-0">
+              <Shield size={20} className="text-[#1e3a8a]" strokeWidth={2.5} />
+            </div>
+            <AnimatePresence>
+              {!collapsed && (
+                <motion.div
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                  transition={{ delay: 0.05, duration: 0.2 }}
+                  className="flex items-baseline gap-2 overflow-hidden"
+                >
+                  <span className="font-mono font-bold text-sm tracking-[0.15em] text-[#141B41]">
+                    ARGUS
+                  </span>
+                  <span className="text-[10px] text-[var(--text-tertiary)] font-medium whitespace-nowrap">
+                    AI Intelligence
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1.5">
-          {navItems.map((item) => {
+        <nav className="flex-1 overflow-y-auto py-3 px-2.5 space-y-0.5">
+          {navItems.map((item, idx) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
 
             return (
               <motion.div
                 key={item.path}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.04, duration: 0.25 }}
               >
                 <Link
                   to={item.path}
                   className={`
-                    relative flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all
+                    relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group
                     ${
                       isActive
-                        ? 'bg-[var(--bg-2)] text-[var(--accent)]'
-                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]'
+                        ? 'text-[#1e3a8a]'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-2)]'
                     }
                   `}
                 >
-                  <Icon size={20} className="flex-shrink-0" />
-                  {!collapsed && (
-                    <motion.span
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.05 }}
-                      className="text-sm font-medium flex-1"
-                    >
-                      {item.label}
-                    </motion.span>
-                  )}
-
-                  {/* Alert indicator */}
-                  {item.hasAlert && !collapsed && (
-                    <div className="w-2 h-2 rounded-full bg-[var(--critical)] flex-shrink-0" />
-                  )}
-
-                  {item.isPulsing && (
+                  {/* Active background */}
+                  {isActive && (
                     <motion.div
-                      animate={{ opacity: [0.3, 0.8, 0.3] }}
-                      transition={{ duration: 2.5, repeat: Infinity }}
-                      className="w-1.5 h-1.5 rounded-full bg-[var(--critical)] flex-shrink-0"
+                      layoutId="navActiveBackground"
+                      className="absolute inset-0 rounded-lg"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.08) 0%, rgba(59, 130, 246, 0.04) 100%)',
+                        border: '1px solid rgba(30, 58, 138, 0.12)',
+                      }}
+                      transition={{ type: 'spring', stiffness: 350, damping: 30 }}
                     />
                   )}
 
-                  {/* Collapsed state tooltip */}
-                  {collapsed && (
+                  {/* Active left indicator */}
+                  {isActive && (
                     <motion.div
-                      initial={{ opacity: 0, x: -8 }}
-                      whileHover={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="absolute left-full ml-3 px-3 py-1.5 bg-[var(--bg-elevated)] rounded-md whitespace-nowrap text-xs font-medium text-[var(--text-primary)] shadow-lg border border-[var(--border-default)] pointer-events-none z-50"
-                    >
+                      layoutId="navActiveIndicator"
+                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
+                      style={{ background: '#1e3a8a' }}
+                      transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                    />
+                  )}
+
+                  <Icon size={18} className="flex-shrink-0 relative z-10" />
+
+                  <AnimatePresence>
+                    {!collapsed && (
+                      <motion.span
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ delay: 0.03 }}
+                        className="text-[13px] font-medium flex-1 relative z-10"
+                      >
+                        {item.label}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Pulsing dot for alerts */}
+                  {item.isPulsing && (
+                    <motion.div
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="w-1.5 h-1.5 rounded-full bg-[var(--critical)] flex-shrink-0 relative z-10"
+                    />
+                  )}
+
+                  {/* Collapsed tooltip */}
+                  {collapsed && (
+                    <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-white rounded-md whitespace-nowrap text-xs font-medium text-[var(--text-primary)] shadow-lg border border-[var(--border-default)] pointer-events-none z-50 opacity-0 group-hover:opacity-100 transition-opacity">
                       {item.label}
-                    </motion.div>
+                    </div>
                   )}
                 </Link>
               </motion.div>
@@ -160,63 +186,42 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Bottom Section */}
-        <div className="border-t border-[var(--border-subtle)] p-3 space-y-3">
-          {/* Theme toggle pill */}
-          <motion.div
-            className="relative inline-flex items-center gap-1.5 bg-[var(--bg-2)] border border-[var(--border-default)] rounded-full p-1 w-full justify-center"
-          >
-            <motion.button
-              onClick={toggleTheme}
-              className={`flex items-center justify-center w-7 h-7 rounded-full transition-all ${
-                theme === 'dark' ? 'bg-[var(--accent-muted)]' : ''
-              }`}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Sun size={16} className="text-[var(--accent)]" />
-            </motion.button>
-
-            <motion.button
-              onClick={toggleTheme}
-              className={`flex items-center justify-center w-7 h-7 rounded-full transition-all ${
-                theme === 'light' ? 'bg-[var(--accent-muted)]' : ''
-              }`}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Moon size={16} className="text-[var(--accent)]" />
-            </motion.button>
-          </motion.div>
-
-          {/* Version badge */}
-          {!collapsed && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-center"
-            >
-              <span className="text-[10px] font-mono font-medium text-[var(--text-tertiary)] bg-[var(--bg-2)] px-2 py-1 rounded-full border border-[var(--border-subtle)] inline-block">
-                v0.2.0
-              </span>
-            </motion.div>
-          )}
+        <div className="border-t border-[var(--border-subtle)] p-2.5 space-y-2">
+          {/* System status */}
+          <AnimatePresence>
+            {!collapsed && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                style={{ background: 'rgba(22, 163, 74, 0.06)', border: '1px solid rgba(22, 163, 74, 0.12)' }}
+              >
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="w-1.5 h-1.5 rounded-full bg-[var(--success)] flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold text-[var(--success)] tracking-wide">SYSTEMS ACTIVE</p>
+                </div>
+                <Activity size={12} className="text-[var(--success)] opacity-60" />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Collapse button */}
           <motion.button
             onClick={() => setCollapsed(!collapsed)}
-            className="w-full flex items-center justify-center p-2 rounded-lg hover:bg-[var(--bg-surface-hover)] transition-colors"
+            className="w-full flex items-center justify-center p-1.5 rounded-lg hover:bg-[var(--bg-2)] transition-colors"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            <motion.div
-              animate={{ rotate: collapsed ? 180 : 0 }}
-              transition={{ duration: 0.3 }}
-            >
+            <motion.div animate={{ rotate: collapsed ? 180 : 0 }} transition={{ duration: 0.2 }}>
               {collapsed ? (
-                <ChevronRight size={20} className="text-[var(--text-secondary)]" />
+                <ChevronRight size={16} className="text-[var(--text-tertiary)]" />
               ) : (
-                <ChevronLeft size={20} className="text-[var(--text-secondary)]" />
+                <ChevronLeft size={16} className="text-[var(--text-tertiary)]" />
               )}
             </motion.div>
           </motion.button>
@@ -227,71 +232,53 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <motion.div
         animate={{ marginLeft: collapsed ? 72 : 260 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="flex-1 flex flex-col overflow-hidden"
+        className="flex-1 flex flex-col overflow-hidden relative z-10"
       >
-        {/* Top Bar */}
+        {/* Top Bar — clean and minimal */}
         <motion.div
-          className="h-14 border-b border-[var(--border-subtle)] flex items-center justify-between px-6 bg-[var(--bg-1)] glass"
-          initial={{ y: -10, opacity: 0 }}
+          className="h-12 border-b flex items-center justify-between px-6 relative z-20 flex-shrink-0"
+          style={{
+            background: 'rgba(255, 255, 255, 0.85)',
+            backdropFilter: 'blur(20px) saturate(180%)',
+            borderColor: 'rgba(20, 27, 65, 0.06)',
+          }}
+          initial={{ y: -12, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.3 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
         >
-          {/* Left: Page title */}
-          <motion.div
-            key={currentPageName}
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 10 }}
-            transition={{ duration: 0.2 }}
-          >
-            <h1 className="text-base font-semibold text-[var(--text-primary)]">
-              {currentPageName}
-            </h1>
-          </motion.div>
-
-          {/* Right: Actions */}
-          <div className="flex items-center gap-4">
-            {/* Search icon */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-              aria-label="Search"
-            >
-              <Search size={20} />
-            </motion.button>
-
-            {/* Notification bell */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="relative p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-              aria-label="Notifications"
-            >
-              <Bell size={20} />
-              {notificationCount > 0 && (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute top-1 right-1 min-w-5 h-5 bg-[var(--critical)] rounded-full flex items-center justify-center text-white text-[10px] font-bold"
-                >
-                  {notificationCount}
-                </motion.div>
-              )}
-            </motion.button>
-
-            {/* User avatar */}
+          {/* Left: breadcrumb */}
+          <AnimatePresence mode="wait">
             <motion.div
-              whileHover={{ scale: 1.05 }}
-              className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--accent)] to-[#06b6d4] flex items-center justify-center text-white text-xs font-bold cursor-pointer"
+              key={currentPageName}
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.2 }}
+              className="flex items-center gap-2"
             >
-              IA
+              <span className="text-xs text-[var(--text-tertiary)] font-medium">ARGUS</span>
+              <span className="text-[var(--text-tertiary)]">/</span>
+              <span className="text-sm font-semibold text-[var(--text-primary)]">{currentPageName}</span>
             </motion.div>
+          </AnimatePresence>
+
+          {/* Right: live indicator */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <motion.div
+                  className="w-1.5 h-1.5 bg-[var(--success)] rounded-full"
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                />
+              </div>
+              <span className="text-xs text-[var(--text-tertiary)] font-medium">Live</span>
+            </div>
           </div>
         </motion.div>
 
         {/* Main content area */}
-        <main className="flex-1 overflow-y-auto bg-[var(--bg-0)]">
+        <main className="flex-1 overflow-y-auto bg-transparent relative">
           {children}
         </main>
       </motion.div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion, animate } from 'framer-motion';
+import { motion, animate, useInView } from 'framer-motion';
 
 interface CountUpProps {
   target: number;
@@ -29,35 +29,49 @@ function formatNumber(
 
 export default function CountUp({
   target,
-  duration = 1.5,
+  duration = 1.8,
   format = 'plain',
   className = '',
   prefix = '',
   suffix = '',
 }: CountUpProps) {
   const [display, setDisplay] = useState('0');
+  const [isAnimating, setIsAnimating] = useState(false);
+  const containerRef = useRef<HTMLSpanElement>(null);
   const hasAnimated = useRef(false);
+  const isInView = useInView(containerRef, { once: true, margin: '-50px' });
 
   useEffect(() => {
-    if (!hasAnimated.current) {
+    if (isInView && !hasAnimated.current) {
       hasAnimated.current = true;
+      setIsAnimating(true);
       const controls = animate(0, target, {
         duration,
-        ease: 'easeOut',
+        ease: [0.25, 0.46, 0.45, 0.94],
         onUpdate(value) {
           setDisplay(formatNumber(value, format));
+        },
+        onComplete() {
+          setIsAnimating(false);
         },
       });
       return () => controls.stop();
     }
-  }, [target, duration, format]);
+  }, [isInView, target, duration, format]);
 
   return (
     <motion.span
-      className={`tabular-nums font-variant-numeric: tabular-nums ${className}`}
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.3 }}
+      ref={containerRef}
+      className={`tabular-nums ${className}`}
+      initial={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
+      animate={isInView ? { opacity: 1, scale: 1, filter: 'blur(0px)' } : undefined}
+      transition={{ duration: 0.5, ease: 'easeOut' }}
+      style={{
+        textShadow: isAnimating
+          ? '0 0 20px var(--accent-glow), 0 0 40px rgba(99, 102, 241, 0.1)'
+          : 'none',
+        transition: 'text-shadow 0.3s ease',
+      }}
     >
       {prefix}{display}{suffix}
     </motion.span>
