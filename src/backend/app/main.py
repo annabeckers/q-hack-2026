@@ -81,6 +81,3 @@ app.include_router(metrics_router, prefix="/api/v1", tags=["metrics"])
 app.include_router(data_stream_router, prefix="/api/v1/data", tags=["data"])
 app.include_router(autonomous_router, prefix="/api/v1/autonomous", tags=["autonomous"])
 
-# GraphQL (optional — uncomment to enable GraphiQL at /graphql)
-# from app.api.graphql import graphql_router
-# app.include_router(graphql_router, prefix="/graphql")

@@ -50,7 +50,7 @@ def make_strands_tools() -> list:
         Args:
             query: The search query string.
         """
-        # TODO: Implement with ChromaDB client
+        # TODO: Implement with database search
         return f"Knowledge base results for: {query}"
 
     @tool

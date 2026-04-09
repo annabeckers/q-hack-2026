@@ -13,10 +13,6 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = "hackathon"
 
-    # ChromaDB
-    chroma_host: str = "localhost"
-    chroma_port: int = 8100
-
     # Auth
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"

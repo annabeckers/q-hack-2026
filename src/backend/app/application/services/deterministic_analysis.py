@@ -5,11 +5,14 @@ import hashlib
 import json
 import re
 from collections import Counter, defaultdict
-from dataclasses import asdict
 
+from app.application.config import get_deterministic_rules_config
 from app.domain.analysis import ChatMessageRecord, CompanyReferenceRule, ConversationSummaryRecord, DeterministicMatchRecord
 from app.infrastructure.database import async_session_factory
 from app.infrastructure.repositories.deterministic_analysis_repository import DeterministicAnalysisRepository
+
+# Config singleton for department inference
+_rules_config = get_deterministic_rules_config()
 
 
 def _normalize_text(value: str) -> str:
@@ -27,49 +30,9 @@ def _stable_id(*parts: str) -> str:
     return hashlib.sha1(payload).hexdigest()[:20]
 
 
-def _match_category(rule: CompanyReferenceRule) -> str:
-    if rule.source_table == "documents":
-        return "secret"
-    if rule.source_table == "employees":
-        if rule.source_field in {"full_name", "manager_name"}:
-            return "pii"
-        return "secret"
-    if rule.source_table == "costumers":
-        if rule.source_field in {"company_name", "contact_name", "email"}:
-            return "pii"
-        return "secret"
-    return rule.category
-
-
-def _match_severity(rule: CompanyReferenceRule) -> str:
-    if rule.severity in {"critical", "high"}:
-        return rule.severity
-    if rule.source_field in {"email", "annual_contract_value_eur", "content_preview"}:
-        return "critical"
-    if rule.source_field in {"company_name", "contact_name", "full_name", "manager_name"}:
-        return "high"
-    return "medium"
-
-
 def _infer_department(text: str | None) -> str | None:
-    haystack = (text or "").lower()
-    keyword_map = {
-        "finance": ["budget", "forecast", "invoice", "payment", "financial", "finance"],
-        "engineering": ["code", "debug", "test", "deploy", "production"],
-        "security": ["security", "rbac", "mailbox", "postfach"],
-        "hr": ["employee", "onboarding", "bewerbung", "cv"],
-        "legal": ["contract", "vertrag", "legal"],
-        "sales": ["sales", "offer", "lead", "angebot"],
-        "support": ["support", "ticket"],
-        "marketing": ["marketing", "content", "copy"],
-        "product": ["roadmap", "product"],
-        "operations": ["operations", "capex", "factory"],
-        "data": ["analysis", "report", "kpi"],
-    }
-    for department, keywords in keyword_map.items():
-        if any(keyword in haystack for keyword in keywords):
-            return department
-    return None
+    """Infer department from keywords in text using configuration."""
+    return _rules_config.infer_department(text)
 
 
 class DeterministicAnalysisService:
@@ -144,6 +107,9 @@ class DeterministicAnalysisService:
 
             await session.commit()
 
+            # Refresh materialized views for fast dashboard queries
+            await repository.refresh_materialized_views()
+
             return {
                 "analysis_run_id": run_id,
                 "source_message_count": len(chats),
@@ -197,12 +163,12 @@ class DeterministicAnalysisService:
                             source_field="user_text_clean",
                             company_rule_id=rule.id,
                             company_label=rule.label,
-                            company_category=_match_category(rule),
+                            company_category=rule.category,
                             company_source_table=rule.source_table,
                             company_source_field=rule.source_field,
                             matched_text=matched_text,
                             match_context=_build_context(text, match.start(), match.end()),
-                            severity=_match_severity(rule),
+                            severity=rule.severity,
                             confidence=1.0,
                         )
                     )

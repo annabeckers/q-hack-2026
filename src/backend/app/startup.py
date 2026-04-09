@@ -42,7 +42,6 @@ def log_startup_info() -> None:
         database=db_type,
         redis=bool(settings.redis_url),
         neo4j=bool(settings.neo4j_uri),
-        chroma=f"{settings.chroma_host}:{settings.chroma_port}",
         scheduler=settings.scheduler_enabled,
         debug=settings.debug,
     )

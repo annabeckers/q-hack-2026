@@ -38,7 +38,8 @@ async def test_security_and_trend_endpoints_shape(client: AsyncClient):
     severity = await client.get("/api/v1/dashboard/security/severity-distribution")
     assert severity.status_code == 200
     severity_data = severity.json()
-    assert set(severity_data.keys()) == {"secrets", "pii", "slopsquat"}
+    # New implementation returns severity levels (critical/high/medium/low)
+    assert set(severity_data.keys()) == {"critical", "high", "medium", "low"}
 
     leak_counts = await client.get("/api/v1/dashboard/security/leak-counts", params={"model": "chatgpt", "category": "secret"})
     assert leak_counts.status_code == 200

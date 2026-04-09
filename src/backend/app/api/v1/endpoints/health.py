@@ -46,13 +46,4 @@ async def health(request: Request):
         checks["neo4j"] = f"error: {e}"
         checks["status"] = "degraded"
 
-    # ChromaDB
-    try:
-        if container.chroma_client:
-            container.chroma_client.heartbeat()
-            checks["chroma"] = "ok"
-    except Exception as e:
-        checks["chroma"] = f"error: {e}"
-        checks["status"] = "degraded"
-
     return checks

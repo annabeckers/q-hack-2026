@@ -1,3 +1,40 @@
+"""Dashboard API endpoints.
+
+## Data Source Reference
+
+### Database-Backed Endpoints (Materialized Views)
+These endpoints query pre-computed materialized views for fast responses:
+
+| Endpoint | Data Source | Materialized View |
+|----------|-------------|-------------------|
+| `GET /summary` (deterministicAnalysis) | PostgreSQL | `mv_deterministic_overview` |
+| `GET /security/findings` | PostgreSQL | `mv_deterministic_top_matches` / `mv_deterministic_conversations` |
+| `GET /security/severity-distribution` | PostgreSQL | `mv_deterministic_overview` |
+| `GET /trends/timeseries` (findings) | PostgreSQL | `mv_deterministic_timeline` |
+
+### File-Based Endpoints
+These endpoints read from local files (logs.jsonl, chat-exports/*.json):
+
+| Endpoint | Data Source | Notes |
+|----------|-------------|-------|
+| `GET /summary` (metrics) | `logs.jsonl` | Cost, tokens, events |
+| `GET /analytics/cost` | `logs.jsonl` | Cost analytics |
+| `GET /analytics/usage` | `logs.jsonl` | Usage metrics |
+| `GET /analytics/model-comparison` | `logs.jsonl` + findings | Model comparison |
+| `GET /security/slopsquatting` | File findings | Slopsquatting analysis |
+| `GET /security/duplicate-secrets` | File findings | Duplicate detection |
+| `GET /trends/anomalies` | `logs.jsonl` | Cost anomaly detection |
+| `GET /trends/patterns-by-time` | File findings | Hourly/daily patterns |
+| `GET /trends/complexity-scatter` | `logs.jsonl` | Complexity scatter plot |
+| `GET /alerts` | File findings | Alert feed |
+
+### Mixed Endpoints
+| Endpoint | Data Source | Notes |
+|----------|-------------|-------|
+| `GET /summary` | Both | Merges DB overview with file-based usage stats |
+| `GET /security/findings/{id}` | File | Detail lookup (not yet migrated to DB) |
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,12 +43,39 @@ from datetime import datetime
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.application.services.deterministic_analysis import default_deterministic_analysis_service
-from app.application.services.dashboard_service import default_dashboard_service
+from app.application.services.dashboard_service import default_dashboard_service, default_db_dashboard_service
 from app.domain.dashboard import DashboardFilters
 
 router = APIRouter()
+
+
+async def _handle_service_errors():
+    """Handle common service errors with appropriate HTTP status codes."""
+    try:
+        yield
+    except (OperationalError, ProgrammingError) as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database service unavailable: {str(e)}"
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Data file not found: {str(e)}"
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid request: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
@@ -61,8 +125,20 @@ async def _ensure_deterministic_analysis() -> None:
 
 @router.get("/summary")
 async def summary(time_range: str = Query("month"), department: str | None = None):
-    await _ensure_deterministic_analysis()
-    return default_dashboard_service.summary(time_range=time_range, department=department)
+    try:
+        await _ensure_deterministic_analysis()
+        # Use database-backed overview when available
+        overview = await default_db_dashboard_service.get_overview(department=department)
+        # Merge with file-based usage stats
+        summary_data = default_dashboard_service.summary(time_range=time_range, department=department)
+        summary_data["deterministicAnalysis"] = overview
+        return summary_data
+    except (OperationalError, ProgrammingError) as e:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {str(e)}")
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Data source not found: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 
 @router.get("/summary/compliance-gauge")
@@ -73,29 +149,50 @@ async def compliance_gauge(department: str | None = None):
 
 @router.get("/analytics/cost")
 async def cost_analytics(dimension: str = Query(...), cost_basis: str = Query("per_session"), limit: int = 20, startDate: str | None = None, endDate: str | None = None, department: str | None = None):
-    await _ensure_deterministic_analysis()
-    if cost_basis != "per_session":
-        raise HTTPException(status_code=400, detail="cost_basis must be per_session")
-    return default_dashboard_service.cost_analytics(_filters(dimension=dimension, department=department, limit=limit, start_date=startDate, end_date=endDate))
+    try:
+        await _ensure_deterministic_analysis()
+        if cost_basis != "per_session":
+            raise HTTPException(status_code=400, detail="cost_basis must be per_session")
+        return default_dashboard_service.cost_analytics(_filters(dimension=dimension, department=department, limit=limit, start_date=startDate, end_date=endDate))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/analytics/usage")
 async def usage_analytics(dimension: str = Query(...), metric: str = Query("avgWordCountPerSession"), startDate: str | None = None, endDate: str | None = None, department: str | None = None):
-    await _ensure_deterministic_analysis()
-    return default_dashboard_service.usage_analytics(_filters(dimension=dimension, metric=metric, department=department, start_date=startDate, end_date=endDate))
+    try:
+        await _ensure_deterministic_analysis()
+        return default_dashboard_service.usage_analytics(_filters(dimension=dimension, metric=metric, department=department, start_date=startDate, end_date=endDate))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/analytics/model-comparison")
 async def model_comparison(department: str | None = None):
-    await _ensure_deterministic_analysis()
-    return default_dashboard_service.model_comparison(_filters(department=department))
+    try:
+        await _ensure_deterministic_analysis()
+        return default_dashboard_service.model_comparison(_filters(department=department))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/security/findings")
 async def findings(type: str = Query("all"), severity: str = Query("all"), status: str = Query("open"), department: str | None = None, provider: str | None = None, limit: int = 100, offset: int = 0):
-    await _ensure_deterministic_analysis()
-    filters = _filters(category=None if type == "all" else type, severity=None if severity == "all" else severity, status=status, department=department, provider=provider, limit=limit, offset=offset)
-    return default_dashboard_service.findings(filters)
+    try:
+        await _ensure_deterministic_analysis()
+        # Use database materialized view for faster queries
+        return await default_db_dashboard_service.get_findings_from_view(
+            department=department,
+            severity=None if severity == "all" else severity,
+            category=None if type == "all" else type,
+            provider=provider,
+            limit=limit,
+            offset=offset,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 
 @router.get("/security/findings/{finding_id}")
@@ -122,8 +219,14 @@ async def finding_remediation(finding_id: str, body: dict = Body(...)):
 
 @router.get("/security/severity-distribution")
 async def severity_distribution(department: str | None = None, provider: str | None = None):
-    await _ensure_deterministic_analysis()
-    return default_dashboard_service.severity_distribution(_filters(department=department, provider=provider))
+    try:
+        await _ensure_deterministic_analysis()
+        # Use materialized view for fast counts
+        return await default_db_dashboard_service.get_severity_distribution(department=department)
+    except (OperationalError, ProgrammingError) as e:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 
 @router.get("/security/leak-counts")
@@ -148,6 +251,15 @@ async def duplicate_secrets(minUsers: int = 2, department: str | None = None):
 @router.get("/trends/timeseries")
 async def time_series(metric: str, granularity: str = Query("day"), department: str | None = None, startDate: str | None = None, endDate: str | None = None):
     await _ensure_deterministic_analysis()
+    if metric == "findings":
+        # Use materialized view for findings timeline
+        days = 30 if granularity == "day" else 7
+        data = await default_db_dashboard_service.get_timeline(days=days)
+        return {
+            "metric": "findings",
+            "granularity": granularity,
+            "data": [{"timestamp": str(row["day"]), "value": row["match_count"]} for row in data],
+        }
     return default_dashboard_service.time_series(_filters(dimension=granularity, metric=metric, department=department, start_date=startDate, end_date=endDate))
 
 

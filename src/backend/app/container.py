@@ -3,11 +3,6 @@
 from redis.asyncio import Redis
 from neo4j import AsyncGraphDatabase
 
-try:
-    import chromadb
-except Exception:  # pragma: no cover - optional test/runtime dependency
-    chromadb = None
-
 from app.config import settings
 from app.infrastructure.database import async_engine, async_session_factory
 
@@ -20,22 +15,25 @@ class Container:
         self.db_session_factory = async_session_factory
         self.redis: Redis | None = None
         self.neo4j_driver = None
-        self.chroma_client: chromadb.HttpClient | None = None
 
     async def init(self):
-        """Initialize all external connections."""
-        self.redis = Redis.from_url(settings.redis_url, decode_responses=True)
-        self.neo4j_driver = AsyncGraphDatabase.driver(
-            settings.neo4j_uri,
-            auth=(settings.neo4j_user, settings.neo4j_password),
-        )
-        if chromadb is not None:
-            self.chroma_client = chromadb.HttpClient(
-                host=settings.chroma_host,
-                port=settings.chroma_port,
+        """Initialize all external connections (best effort - optional services)."""
+        # Redis (optional)
+        try:
+            self.redis = Redis.from_url(settings.redis_url, decode_responses=True)
+            await self.redis.ping()
+        except Exception:
+            self.redis = None
+        
+        # Neo4j (optional)
+        try:
+            self.neo4j_driver = AsyncGraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=(settings.neo4j_user, settings.neo4j_password),
             )
-        else:
-            self.chroma_client = None
+            await self.neo4j_driver.verify_connectivity()
+        except Exception:
+            self.neo4j_driver = None
 
     async def close(self):
         """Cleanup all connections."""
@@ -43,4 +41,5 @@ class Container:
             await self.redis.close()
         if self.neo4j_driver:
             await self.neo4j_driver.close()
-        await self.db_engine.dispose()
+        if self.db_engine:
+            await self.db_engine.dispose()

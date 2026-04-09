@@ -1,41 +1,20 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import asdict
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.config import get_deterministic_rules_config
 from app.domain.analysis import ChatMessageRecord, CompanyReferenceRule, ConversationSummaryRecord, DeterministicMatchRecord
 from app.domain.interfaces import AbstractDeterministicAnalysisRepository
 
-
-RULE_FIELD_MAP: dict[str, dict[str, tuple[str, str]]] = {
-    "costumers": {
-        "company_name": ("pii", "high"),
-        "contact_name": ("pii", "high"),
-        "email": ("pii", "critical"),
-        "costumer_code": ("secret", "high"),
-        "segment": ("secret", "medium"),
-        "annual_contract_value_eur": ("secret", "critical"),
-    },
-    "employees": {
-        "employee_number": ("secret", "high"),
-        "full_name": ("pii", "high"),
-        "department": ("secret", "medium"),
-        "job_title": ("secret", "medium"),
-        "manager_name": ("pii", "high"),
-    },
-    "documents": {
-        "title": ("secret", "medium"),
-        "source": ("secret", "medium"),
-        "source_type": ("secret", "low"),
-        "content_preview": ("secret", "critical"),
-        "metadata_json": ("secret", "medium"),
-    },
-}
+logger = logging.getLogger(__name__)
 
 
 def _stringify(value: Any) -> str:
@@ -96,6 +75,43 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
 
     async def ensure_schema(self) -> None:
         statements = [
+            # Chats table (source data for analysis)
+            """
+            CREATE TABLE IF NOT EXISTS chats (
+                id BIGSERIAL PRIMARY KEY,
+                source_file TEXT NOT NULL,
+                source_format VARCHAR(20),
+                provider VARCHAR(50) NOT NULL,
+                conversation_key TEXT NOT NULL,
+                conversation_title TEXT,
+                conversation_slug TEXT,
+                export_author VARCHAR(50),
+                model_name VARCHAR(100),
+                conversation_timestamp TIMESTAMPTZ,
+                message_id TEXT NOT NULL,
+                parent_message_id TEXT,
+                message_index INTEGER,
+                message_timestamp TIMESTAMPTZ,
+                author VARCHAR(20) NOT NULL,
+                role VARCHAR(20) NOT NULL,
+                language VARCHAR(50),
+                user_text TEXT,
+                user_text_clean TEXT,
+                user_text_hash CHAR(64),
+                metadata JSONB,
+                UNIQUE (source_file, conversation_key, message_id)
+            )
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS ix_chats_conversation_key ON chats (conversation_key)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS ix_chats_provider ON chats (provider)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS ix_chats_conversation_timestamp ON chats (conversation_timestamp)
+            """,
+            # Deterministic analysis tables
             """
             CREATE TABLE IF NOT EXISTS deterministic_analysis_runs (
                 id TEXT PRIMARY KEY,
@@ -187,6 +203,7 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
         return result.first() is not None
 
     async def load_company_reference_rules(self) -> list[CompanyReferenceRule]:
+        # Try to load cached rules first
         try:
             result = await self._session.execute(
                 text(
@@ -197,27 +214,37 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
                     """
                 )
             )
-        except Exception:
-            result = None
-
-        rows = [CompanyReferenceRule(**row) for row in result.mappings().all()] if result is not None else []
-        if rows:
-            return rows
+            rows = [CompanyReferenceRule(**row) for row in result.mappings().all()]
+            if rows:
+                return rows
+        except SQLAlchemyError as e:
+            # Table may not exist yet (first run) - log and continue to generate
+            logger.debug("Could not load cached rules, will generate from source tables: %s", e)
 
         generated: list[CompanyReferenceRule] = []
+        config = get_deterministic_rules_config()
 
-        for table_name, field_map in RULE_FIELD_MAP.items():
+        # Iterate over configured tables and their fields from YAML config
+        for table_name, table_fields in config.severity_rules.by_table_field.items():
             try:
-                result = await self._session.execute(text(f"SELECT * FROM {table_name}"))
+                result = await self._session.execute(text(f"SELECT * FROM {table_name}"))  # noqa: S608
                 source_rows = result.mappings().all()
-            except Exception:
+            except SQLAlchemyError as e:
+                # Source table may not exist yet - log warning and skip
+                logger.warning("Could not load rules from table '%s': %s", table_name, e)
                 continue
+
             for row in source_rows:
                 record_id = _stringify(row.get("id"))
-                for field_name, (category, severity) in field_map.items():
+                for field_name, base_severity in table_fields.items():
                     raw_value = row.get(field_name)
                     if raw_value in (None, ""):
                         continue
+
+                    # Resolve category and severity from config
+                    category = config.category_rules.resolve(table_name, field_name)
+                    severity = config.severity_rules.resolve(table_name, field_name, base_severity)
+
                     if field_name == "metadata_json":
                         for idx, scalar in enumerate(_extract_json_scalars(_stringify(raw_value))):
                             pattern = _build_regex_pattern(scalar)
@@ -271,8 +298,9 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
                     """
                 )
             )
-        except Exception:
-            return []
+        except SQLAlchemyError as e:
+            logger.error("Failed to load chat messages: %s", e)
+            raise
         records: list[ChatMessageRecord] = []
         for row in result.mappings().all():
             records.append(
@@ -404,3 +432,423 @@ class DeterministicAnalysisRepository(AbstractDeterministicAnalysisRepository):
                 ),
                 asdict(summary),
             )
+
+    async def refresh_materialized_views(self) -> None:
+        """Refresh all materialized views for deterministic analysis.
+        
+        Call this after saving matches to update dashboard views.
+        Uses CONCURRENTLY to avoid locking.
+        
+        Note: This is a no-op for SQLite as it doesn't support materialized views.
+        """
+        # Check if we're using PostgreSQL (materialized views only work in PostgreSQL)
+        dialect = self._session.bind.dialect.name if self._session.bind else ""
+        if dialect != "postgresql":
+            logger.debug("Skipping materialized view refresh for %s", dialect)
+            return
+        
+        try:
+            await self._session.execute(text("SELECT refresh_deterministic_views()"))
+            logger.info("Refreshed deterministic analysis materialized views")
+        except SQLAlchemyError as e:
+            logger.error("Failed to refresh materialized views: %s", e)
+            raise
+
+    # Materialized View Query Methods (for dashboard)
+
+    async def get_overview_stats(self) -> dict[str, Any] | None:
+        """Get overview stats from materialized view (or base tables for SQLite)."""
+        dialect = self._session.bind.dialect.name if self._session.bind else ""
+        
+        if dialect == "postgresql":
+            # Use materialized view for PostgreSQL
+            result = await self._session.execute(
+                text("SELECT * FROM mv_deterministic_overview LIMIT 1")
+            )
+            row = result.mappings().first()
+            return dict(row) if row else None
+        else:
+            # Fallback: compute stats from base tables for SQLite
+            return await self._compute_overview_stats()
+    
+    async def _compute_overview_stats(self) -> dict[str, Any] | None:
+        """Compute overview stats directly from base tables (for SQLite)."""
+        result = await self._session.execute(
+            text("""
+                SELECT 
+                    COUNT(*) as total_matches,
+                    COUNT(DISTINCT conversation_key) as affected_conversations,
+                    COUNT(DISTINCT provider) as total_providers,
+                    SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as critical_matches,
+                    SUM(CASE WHEN severity = 'high' THEN 1 ELSE 0 END) as high_matches,
+                    SUM(CASE WHEN severity = 'medium' THEN 1 ELSE 0 END) as medium_matches,
+                    SUM(CASE WHEN severity = 'low' THEN 1 ELSE 0 END) as low_matches,
+                    SUM(CASE WHEN company_category = 'pii' THEN 1 ELSE 0 END) as pii_matches,
+                    SUM(CASE WHEN company_category = 'secret' THEN 1 ELSE 0 END) as secret_matches,
+                    SUM(CASE WHEN company_category = 'financial' THEN 1 ELSE 0 END) as financial_matches,
+                    MAX(created_at) as last_analysis_run,
+                    datetime('now') as refreshed_at
+                FROM deterministic_chat_matches
+            """)
+        )
+        row = result.mappings().first()
+        return dict(row) if row else None
+
+    async def get_conversations_from_view(
+        self, 
+        department: str | None = None,
+        provider: str | None = None,
+        severity: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Get conversation summaries from materialized view (or base tables for SQLite)."""
+        dialect = self._session.bind.dialect.name if self._session.bind else ""
+        
+        if dialect == "postgresql":
+            return await self._get_conversations_from_matview(department, provider, severity, limit, offset)
+        else:
+            return await self._get_conversations_from_base(department, provider, severity, limit, offset)
+    
+    async def _get_conversations_from_matview(
+        self, 
+        department: str | None = None,
+        provider: str | None = None,
+        severity: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Get conversation summaries from materialized view (PostgreSQL)."""
+        where_clauses = []
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        
+        if department:
+            where_clauses.append("department = :department")
+            params["department"] = department
+        if provider:
+            where_clauses.append("provider = :provider")
+            params["provider"] = provider
+        if severity:
+            where_clauses.append("highest_severity = :severity")
+            params["severity"] = severity
+            
+        where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        
+        result = await self._session.execute(
+            text(f"""
+                SELECT * FROM mv_deterministic_conversations
+                {where_sql}
+                ORDER BY match_count DESC
+                LIMIT :limit OFFSET :offset
+            """),  # noqa: S608
+            params,
+        )
+        return [dict(row) for row in result.mappings().all()]
+    
+    async def _get_conversations_from_base(
+        self, 
+        department: str | None = None,
+        provider: str | None = None,
+        severity: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Get conversation summaries from base tables (SQLite)."""
+        where_clauses = []
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        
+        if department:
+            where_clauses.append("department = :department")
+            params["department"] = department
+        if provider:
+            where_clauses.append("provider = :provider")
+            params["provider"] = provider
+        if severity:
+            # Map severity string to numeric value
+            severity_filter_sql = """(
+                SELECT MAX(CASE severity 
+                    WHEN 'critical' THEN 3 
+                    WHEN 'high' THEN 2 
+                    WHEN 'medium' THEN 1 
+                    ELSE 0 
+                END) 
+                FROM deterministic_chat_matches m2 
+                WHERE m2.conversation_key = m.conversation_key
+            ) = CASE :severity 
+                WHEN 'critical' THEN 3 
+                WHEN 'high' THEN 2 
+                WHEN 'medium' THEN 1 
+                ELSE 0 
+            END"""
+            where_clauses.append(severity_filter_sql)
+            params["severity"] = severity
+            
+        where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        
+        result = await self._session.execute(
+            text(f"""
+                SELECT 
+                    conversation_key,
+                    MAX(conversation_title) as conversation_title,
+                    MAX(provider) as provider,
+                    MAX(model_name) as model_name,
+                    MAX(department) as department,
+                    COUNT(*) as match_count,
+                    SUM(CASE WHEN company_category = 'secret' THEN 1 ELSE 0 END) as secret_count,
+                    SUM(CASE WHEN company_category = 'pii' THEN 1 ELSE 0 END) as pii_count,
+                    SUM(CASE WHEN company_category = 'financial' THEN 1 ELSE 0 END) as financial_count,
+                    MAX(CASE severity 
+                        WHEN 'critical' THEN 3 
+                        WHEN 'high' THEN 2 
+                        WHEN 'medium' THEN 1 
+                        ELSE 0 
+                    END) as severity_order
+                FROM deterministic_chat_matches m
+                {where_sql}
+                GROUP BY conversation_key
+                ORDER BY match_count DESC
+                LIMIT :limit OFFSET :offset
+            """),  # noqa: S608
+            params,
+        )
+        rows = result.mappings().all()
+        # Convert severity_order back to string
+        result_list = []
+        for row in rows:
+            row_dict = dict(row)
+            severity_map = {3: 'critical', 2: 'high', 1: 'medium', 0: 'low'}
+            row_dict['highest_severity'] = severity_map.get(row_dict.pop('severity_order', 0), 'low')
+            result_list.append(row_dict)
+        return result_list
+
+    async def get_top_matches_from_view(
+        self,
+        department: str | None = None,
+        severity: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Get top matches (critical/high) from materialized view (or base tables for SQLite)."""
+        dialect = self._session.bind.dialect.name if self._session.bind else ""
+        
+        if dialect == "postgresql":
+            return await self._get_top_matches_from_matview(department, severity, limit)
+        else:
+            return await self._get_top_matches_from_base(department, severity, limit)
+    
+    async def _get_top_matches_from_matview(
+        self,
+        department: str | None = None,
+        severity: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Get top matches from materialized view (PostgreSQL)."""
+        where_clauses = []
+        params: dict[str, Any] = {"limit": limit}
+        
+        if department:
+            where_clauses.append("department = :department")
+            params["department"] = department
+        if severity:
+            where_clauses.append("severity = :severity")
+            params["severity"] = severity
+            
+        where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        
+        result = await self._session.execute(
+            text(f"""
+                SELECT * FROM mv_deterministic_top_matches
+                {where_sql}
+                ORDER BY severity DESC, created_at DESC
+                LIMIT :limit
+            """),  # noqa: S608
+            params,
+        )
+        return [dict(row) for row in result.mappings().all()]
+    
+    async def _get_top_matches_from_base(
+        self,
+        department: str | None = None,
+        severity: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Get top matches from base tables (SQLite)."""
+        where_clauses = ["severity IN ('critical', 'high')"]
+        params: dict[str, Any] = {"limit": limit}
+        
+        if department:
+            where_clauses.append("department = :department")
+            params["department"] = department
+        if severity:
+            where_clauses.append("severity = :severity")
+            params["severity"] = severity
+            
+        where_sql = "WHERE " + " AND ".join(where_clauses)
+        
+        result = await self._session.execute(
+            text(f"""
+                SELECT 
+                    id,
+                    department,
+                    source_file,
+                    conversation_key,
+                    conversation_title,
+                    provider,
+                    model_name,
+                    message_id,
+                    message_timestamp,
+                    author,
+                    role,
+                    company_label,
+                    company_category as category,
+                    company_source_table,
+                    company_source_field,
+                    matched_text,
+                    match_context,
+                    severity,
+                    confidence,
+                    created_at,
+                    created_at as analysis_run_at
+                FROM deterministic_chat_matches
+                {where_sql}
+                ORDER BY 
+                    CASE severity 
+                        WHEN 'critical' THEN 3 
+                        WHEN 'high' THEN 2 
+                        WHEN 'medium' THEN 1 
+                        ELSE 0 
+                    END DESC,
+                    created_at DESC
+                LIMIT :limit
+            """),  # noqa: S608
+            params,
+        )
+        return [dict(row) for row in result.mappings().all()]
+
+    async def get_timeline_from_view(
+        self,
+        days: int = 30,
+        category: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get timeline data from materialized view (or base tables for SQLite)."""
+        dialect = self._session.bind.dialect.name if self._session.bind else ""
+        
+        if dialect == "postgresql":
+            return await self._get_timeline_from_matview(days, category)
+        else:
+            return await self._get_timeline_from_base(days, category)
+    
+    async def _get_timeline_from_matview(
+        self,
+        days: int = 30,
+        category: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get timeline data from materialized view (PostgreSQL)."""
+        params: dict[str, Any] = {"days": days}
+        where_clauses = ["day >= CURRENT_DATE - :days"]
+        
+        if category:
+            where_clauses.append("category = :category")
+            params["category"] = category
+            
+        result = await self._session.execute(
+            text(f"""
+                SELECT day, category, severity, provider, match_count, conversation_count
+                FROM mv_deterministic_timeline
+                WHERE {' AND '.join(where_clauses)}
+                ORDER BY day DESC
+            """),  # noqa: S608
+            params,
+        )
+        return [dict(row) for row in result.mappings().all()]
+    
+    async def _get_timeline_from_base(
+        self,
+        days: int = 30,
+        category: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get timeline data from base tables (SQLite)."""
+        params: dict[str, Any] = {"days": days}
+        where_clauses = ["message_timestamp >= datetime('now', '-' || :days || ' days')"]
+        
+        if category:
+            where_clauses.append("company_category = :category")
+            params["category"] = category
+            
+        where_sql = "WHERE " + " AND ".join(where_clauses)
+            
+        result = await self._session.execute(
+            text(f"""
+                SELECT 
+                    date(message_timestamp) as day,
+                    company_category as category,
+                    severity,
+                    provider,
+                    COUNT(*) as match_count,
+                    COUNT(DISTINCT conversation_key) as conversation_count
+                FROM deterministic_chat_matches
+                {where_sql}
+                GROUP BY date(message_timestamp), company_category, severity, provider
+                ORDER BY day DESC
+            """),  # noqa: S608
+            params,
+        )
+        return [dict(row) for row in result.mappings().all()]
+
+    async def get_department_stats_from_view(self) -> list[dict[str, Any]]:
+        """Get department statistics from materialized view (or base tables for SQLite)."""
+        dialect = self._session.bind.dialect.name if self._session.bind else ""
+        
+        if dialect == "postgresql":
+            result = await self._session.execute(
+                text("SELECT * FROM mv_deterministic_by_department ORDER BY match_count DESC")
+            )
+        else:
+            # SQLite fallback
+            result = await self._session.execute(
+                text("""
+                    SELECT 
+                        COALESCE(department, 'unknown') as department,
+                        provider,
+                        COUNT(*) as match_count,
+                        COUNT(DISTINCT conversation_key) as conversation_count,
+                        SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as critical_count,
+                        SUM(CASE WHEN severity = 'high' THEN 1 ELSE 0 END) as high_count,
+                        SUM(CASE WHEN company_category = 'pii' THEN 1 ELSE 0 END) as pii_count,
+                        SUM(CASE WHEN company_category = 'secret' THEN 1 ELSE 0 END) as secret_count
+                    FROM deterministic_chat_matches
+                    GROUP BY COALESCE(department, 'unknown'), provider
+                    ORDER BY match_count DESC
+                """)
+            )
+        return [dict(row) for row in result.mappings().all()]
+
+    async def get_rule_stats_from_view(self) -> list[dict[str, Any]]:
+        """Get rule effectiveness statistics from materialized view (or base tables for SQLite)."""
+        dialect = self._session.bind.dialect.name if self._session.bind else ""
+        
+        if dialect == "postgresql":
+            result = await self._session.execute(
+                text("SELECT * FROM mv_deterministic_rule_stats ORDER BY match_count DESC")
+            )
+        else:
+            # SQLite fallback
+            result = await self._session.execute(
+                text("""
+                    SELECT 
+                        dcr.id as rule_id,
+                        dcr.source_table,
+                        dcr.source_field,
+                        dcr.label,
+                        dcr.category as rule_category,
+                        dcr.severity as rule_severity,
+                        COUNT(dcm.id) as match_count,
+                        COUNT(DISTINCT dcm.conversation_key) as affected_conversations,
+                        MAX(dcm.created_at) as last_match_at
+                    FROM deterministic_company_rules dcr
+                    LEFT JOIN deterministic_chat_matches dcm ON dcm.company_rule_id = dcr.id
+                    GROUP BY dcr.id, dcr.source_table, dcr.source_field, dcr.label, 
+                             dcr.category, dcr.severity
+                    ORDER BY match_count DESC
+                """)
+            )
+        return [dict(row) for row in result.mappings().all()]

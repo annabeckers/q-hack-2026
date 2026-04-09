@@ -57,7 +57,6 @@ class _MinimalContainer:
         self._session_factory = session_factory
         self.redis = None
         self.neo4j_driver = None
-        self.chroma_client = None
 
     def db_session_factory(self):
         return self._session_factory()

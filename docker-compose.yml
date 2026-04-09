@@ -11,10 +11,9 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/hackathon
       - REDIS_URL=redis://redis:6379/0
       - NEO4J_URI=bolt://neo4j:7687
-      - CHROMA_HOST=chroma
-      - CHROMA_PORT=8100
     volumes:
       - ./src/backend:/app
+      - ./config:/config:ro
       - /app/.venv
     depends_on:
       postgres:
@@ -23,8 +22,6 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
-      chroma:
-        condition: service_started
     networks:
       - hackathon-net
     restart: unless-stopped
@@ -83,19 +80,6 @@ services:
       - hackathon-net
     restart: unless-stopped
 
-  chroma:
-    image: chromadb/chroma:latest
-    ports:
-      - "8100:8000"
-    volumes:
-      - chroma-data:/chroma/chroma
-    environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
-    networks:
-      - hackathon-net
-    restart: unless-stopped
-
   redis:
     image: redis:7-alpine
     ports:
@@ -119,8 +103,6 @@ services:
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/hackathon
-      - CHROMA_HOST=chroma
-      - CHROMA_PORT=8100
       - NEO4J_URI=bolt://neo4j:7687
     volumes:
       - ./src/dataloader:/app
@@ -129,8 +111,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      chroma:
-        condition: service_started
       neo4j:
         condition: service_healthy
     networks:
@@ -198,7 +178,6 @@ services:
 volumes:
   postgres-data:
   neo4j-data:
-  chroma-data:
   redis-data:
   prometheus-data:
   grafana-data:

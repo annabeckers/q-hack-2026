@@ -26,7 +26,7 @@ docker compose exec -T postgres psql -U postgres -d hackathon -f /docker-entrypo
 Use the Python loader as the single source of truth for mock data:
 
 - No authentication seed data is inserted.
-- Seeds business datasets: `costumers`, `employees`, `documents`.
+- Seeds business datasets: `customers`, `employees`, `documents`.
 
 ```bash
 cd src/backend

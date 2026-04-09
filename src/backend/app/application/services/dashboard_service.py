@@ -7,6 +7,8 @@ from statistics import mean, pstdev
 
 from app.domain.dashboard import DashboardFilters, FindingRecord, UsageRecord
 from app.infrastructure.repositories.dashboard_repository import DashboardRepository, default_dashboard_repository
+from app.infrastructure.repositories.deterministic_analysis_repository import DeterministicAnalysisRepository
+from app.infrastructure.database import async_session_factory
 
 
 def _family(name: str | None) -> str:
@@ -38,8 +40,8 @@ class DashboardService:
     def __init__(self, repository: DashboardRepository = default_dashboard_repository):
         self._repository = repository
 
-    def _filter_usage(self, filters: DashboardFilters) -> list[UsageRecord]:
-        records = self._repository.list_usage_records()
+    def _filter_usage(self, filters: DashboardFilters, *, require_data: bool = False) -> list[UsageRecord]:
+        records = self._repository.list_usage_records(raise_on_missing=require_data)
         if filters.department:
             records = [record for record in records if record.department_id == filters.department]
         if filters.model:
@@ -149,7 +151,7 @@ class DashboardService:
         return "unknown"
 
     def cost_analytics(self, filters: DashboardFilters) -> dict:
-        usage = self._filter_usage(filters)
+        usage = self._filter_usage(filters, require_data=True)
         buckets: dict[str, dict[str, float | int]] = defaultdict(lambda: {"cost": 0.0, "sessions": 0, "tokens": 0, "trivial": 0, "private": 0})
 
         for record in usage:
@@ -180,7 +182,7 @@ class DashboardService:
         return {"costBasis": "per_session", "dimension": filters.dimension, "items": items, "total": round(sum(record.cost for record in usage), 4), "totalRecords": len(usage)}
 
     def usage_analytics(self, filters: DashboardFilters) -> dict:
-        usage = self._filter_usage(filters)
+        usage = self._filter_usage(filters, require_data=True)
         buckets: dict[str, list[UsageRecord]] = defaultdict(list)
         for record in usage:
             buckets[self._bucket_key(record, filters.dimension)].append(record)
@@ -200,7 +202,7 @@ class DashboardService:
         return {"dimension": filters.dimension, "metric": filters.metric, "items": items}
 
     def model_comparison(self, filters: DashboardFilters) -> list[dict]:
-        usage = self._filter_usage(filters)
+        usage = self._filter_usage(filters, require_data=True)
         findings = self._filter_findings(filters)
         by_model: dict[str, list[UsageRecord]] = defaultdict(list)
         for record in usage:
@@ -428,3 +430,185 @@ class DashboardService:
 
 
 default_dashboard_service = DashboardService()
+
+
+# Database-backed dashboard service using materialized views
+# This service queries from mv_deterministic_* views for fast dashboard responses
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+
+class DatabaseDashboardService:
+    """Dashboard service backed by materialized views for fast queries.
+    
+    This service reads from pre-computed materialized views:
+    - mv_deterministic_overview
+    - mv_deterministic_conversations
+    - mv_deterministic_top_matches
+    - mv_deterministic_by_department
+    - mv_deterministic_timeline
+    """
+
+    def __init__(self, session_factory=async_session_factory):
+        self._session_factory = session_factory
+
+    async def get_overview(self, department: str | None = None) -> dict:
+        """Get overview stats from materialized view."""
+        async with self._session_factory() as session:
+            repository = DeterministicAnalysisRepository(session)
+            stats = await repository.get_overview_stats()
+            
+            if not stats:
+                return {
+                    "totalMatches": 0,
+                    "affectedConversations": 0,
+                    "criticalMatches": 0,
+                    "highMatches": 0,
+                    "mediumMatches": 0,
+                    "piiMatches": 0,
+                    "secretMatches": 0,
+                    "lastAnalysisRun": None,
+                }
+            
+            return {
+                "totalMatches": stats.get("total_matches", 0),
+                "affectedConversations": stats.get("affected_conversations", 0),
+                "totalProviders": stats.get("total_providers", 0),
+                "criticalMatches": stats.get("critical_matches", 0),
+                "highMatches": stats.get("high_matches", 0),
+                "mediumMatches": stats.get("medium_matches", 0),
+                "lowMatches": stats.get("low_matches", 0),
+                "piiMatches": stats.get("pii_matches", 0),
+                "secretMatches": stats.get("secret_matches", 0),
+                "financialMatches": stats.get("financial_matches", 0),
+                "lastAnalysisRun": stats.get("last_analysis_run"),
+                "refreshedAt": stats.get("refreshed_at"),
+            }
+
+    async def get_findings_from_view(
+        self,
+        department: str | None = None,
+        severity: str | None = None,
+        category: str | None = None,
+        provider: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict:
+        """Get findings from materialized view (fast)."""
+        async with self._session_factory() as session:
+            repository = DeterministicAnalysisRepository(session)
+            
+            # Use top matches view for critical/high, conversations view for others
+            if severity in ("critical", "high", None):
+                items = await repository.get_top_matches_from_view(
+                    department=department,
+                    severity=severity,
+                    limit=limit + offset,
+                )
+            else:
+                # For medium/low, get from conversations
+                conversations = await repository.get_conversations_from_view(
+                    department=department,
+                    provider=provider,
+                    severity=severity,
+                    limit=limit,
+                    offset=offset,
+                )
+                items = self._conversations_to_findings(conversations)
+            
+            return {
+                "items": items[offset:offset + limit],
+                "total": len(items),  # Note: actual count may be higher
+                "offset": offset,
+                "limit": limit,
+            }
+
+    async def get_conversations(
+        self,
+        department: str | None = None,
+        provider: str | None = None,
+        severity: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict:
+        """Get conversation summaries from materialized view."""
+        async with self._session_factory() as session:
+            repository = DeterministicAnalysisRepository(session)
+            items = await repository.get_conversations_from_view(
+                department=department,
+                provider=provider,
+                severity=severity,
+                limit=limit,
+                offset=offset,
+            )
+            
+            return {
+                "items": items,
+                "total": len(items),  # Note: may need separate count query
+                "offset": offset,
+                "limit": limit,
+            }
+
+    async def get_department_stats(self) -> list[dict]:
+        """Get department statistics from materialized view."""
+        async with self._session_factory() as session:
+            repository = DeterministicAnalysisRepository(session)
+            return await repository.get_department_stats_from_view()
+
+    async def get_timeline(
+        self,
+        days: int = 30,
+        category: str | None = None,
+    ) -> list[dict]:
+        """Get timeline data from materialized view."""
+        async with self._session_factory() as session:
+            repository = DeterministicAnalysisRepository(session)
+            return await repository.get_timeline_from_view(days=days, category=category)
+
+    async def get_severity_distribution(
+        self,
+        department: str | None = None,
+    ) -> dict:
+        """Get severity distribution from materialized view."""
+        async with self._session_factory() as session:
+            repository = DeterministicAnalysisRepository(session)
+            stats = await repository.get_overview_stats()
+            
+            if not stats:
+                return {"critical": 0, "high": 0, "medium": 0, "low": 0}
+            
+            return {
+                "critical": stats.get("critical_matches", 0),
+                "high": stats.get("high_matches", 0),
+                "medium": stats.get("medium_matches", 0),
+                "low": stats.get("low_matches", 0),
+            }
+
+    def _conversations_to_findings(self, conversations: list[dict]) -> list[dict]:
+        """Convert conversation summary to finding format."""
+        findings = []
+        for conv in conversations:
+            finding = {
+                "id": f"{conv.get('conversation_key')}:summary",
+                "type": "secret" if conv.get("secret_count", 0) > 0 else "pii",
+                "severity": conv.get("highest_severity", "medium"),
+                "category": conv.get("labels", ["secret"])[0] if conv.get("labels") else "secret",
+                "model": conv.get("model_name", "unknown"),
+                "provider": conv.get("provider", "unknown"),
+                "conversationId": conv.get("conversation_key"),
+                "matchCount": conv.get("match_count", 0),
+                "secretCount": conv.get("secret_count", 0),
+                "piiCount": conv.get("pii_count", 0),
+                "department": conv.get("department"),
+                "conversationTitle": conv.get("conversation_title"),
+                "timestamp": conv.get("last_match_at"),
+            }
+            findings.append(finding)
+        return findings
+
+
+# Singleton instance
+default_db_dashboard_service = DatabaseDashboardService()

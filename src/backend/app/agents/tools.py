@@ -1,47 +1,19 @@
-"""Agent tools with real ChromaDB + Neo4j implementations.
+"""Agent tools with Neo4j and PostgreSQL implementations.
 
 These tools can be used with any agent framework. For framework-specific
 decorators, wrap them in the respective skeleton module.
 """
 
 import json
-import chromadb
 from neo4j import GraphDatabase
 
 from app.config import settings
-
-
-def get_chroma_client() -> chromadb.HttpClient:
-    return chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
 
 
 def get_neo4j_driver():
     return GraphDatabase.driver(
         settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password)
     )
-
-
-def search_knowledge_base(query: str, collection: str = "documents", n_results: int = 5) -> str:
-    """Search the ChromaDB knowledge base for relevant information.
-
-    Args:
-        query: The search query string.
-        collection: ChromaDB collection name.
-        n_results: Number of results to return.
-
-    Returns:
-        JSON string of matching documents.
-    """
-    client = get_chroma_client()
-    coll = client.get_or_create_collection(collection)
-    results = coll.query(query_texts=[query], n_results=n_results)
-
-    docs = []
-    for i, doc in enumerate(results["documents"][0]):
-        meta = results["metadatas"][0][i] if results["metadatas"] else {}
-        docs.append({"content": doc[:500], "metadata": meta})
-
-    return json.dumps(docs, indent=2)
 
 
 def query_graph(cypher: str) -> str:
