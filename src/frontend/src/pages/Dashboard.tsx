@@ -84,17 +84,19 @@ function ComplianceRing({ score, idx }: { score: number; idx: number }) {
 
   return (
     <motion.div ref={ref} initial={{ opacity: 0, y: 20 }} animate={inView ? { opacity: 1, y: 0 } : undefined} transition={{ delay: idx * 0.08, duration: 0.5 }}>
-      <Card className="h-full flex flex-col items-center justify-center py-6">
-        <div className="relative w-24 h-24 flex items-center justify-center mb-3">
-          <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r={r} fill="none" stroke="var(--border-subtle)" strokeWidth="5" />
-            <motion.circle cx="60" cy="60" r={r} fill="none" stroke={color} strokeWidth="5" strokeDasharray={circ} strokeLinecap="round" initial={{ strokeDashoffset: circ }} animate={inView ? { strokeDashoffset: offset } : undefined} transition={{ delay: 0.3, duration: 1.8, ease: 'easeOut' }} style={{ filter: `drop-shadow(0 0 6px ${color})` }} />
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-2xl font-bold text-[var(--text-primary)] tabular-nums"><CountUp target={score} /></span>
+      <Card className="h-full">
+        <div className="flex flex-col items-center justify-center p-2">
+          <div className="relative w-24 h-24 flex items-center justify-center mb-3">
+            <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r={r} fill="none" stroke="var(--border-subtle)" strokeWidth="5" />
+              <motion.circle cx="60" cy="60" r={r} fill="none" stroke={color} strokeWidth="5" strokeDasharray={circ} strokeLinecap="round" initial={{ strokeDashoffset: circ }} animate={inView ? { strokeDashoffset: offset } : undefined} transition={{ delay: 0.3, duration: 1.8, ease: 'easeOut' }} style={{ filter: `drop-shadow(0 0 6px ${color})` }} />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-2xl font-bold text-[var(--text-primary)] tabular-nums"><CountUp target={score} /></span>
+            </div>
           </div>
+          <p className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider text-center">EU AI Act</p>
         </div>
-        <p className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">EU AI Act</p>
       </Card>
     </motion.div>
   );
@@ -170,7 +172,7 @@ function ThreatDistribution({ distribution }: { distribution: types.SeverityDist
       <Card header={<div className="flex items-center justify-between"><div className="flex items-center gap-2"><Radar size={16} className="text-[var(--accent)]" /><span className="font-semibold text-[var(--text-primary)] text-sm">Threat Distribution</span></div><span className="text-xs text-[var(--text-tertiary)] tabular-nums">{total} total</span></div>}>
         <div className="space-y-4">
           <div className="flex gap-4 text-[11px]">
-            {[{ l: 'Critical', c: 'var(--critical)' }, { l: 'High', c: 'var(--high)' }, { l: 'Medium', c: 'var(--medium)' }].map(i =>
+            {[{ l: 'Critical', c: '#b91c1c' }, { l: 'High', c: '#ea580c' }, { l: 'Medium', c: '#eab308' }].map(i =>
               <div key={i.l} className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm" style={{ background: i.c }} /><span className="text-[var(--text-secondary)]">{i.l}</span></div>
             )}
           </div>
@@ -179,9 +181,9 @@ function ThreatDistribution({ distribution }: { distribution: types.SeverityDist
               <XAxis dataKey="category" stroke="var(--border-subtle)" tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }} axisLine={{ stroke: 'var(--border-subtle)' }} />
               <YAxis stroke="var(--border-subtle)" tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }} axisLine={{ stroke: 'var(--border-subtle)' }} />
               <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid var(--border-default)', borderRadius: '8px', boxShadow: '0 8px 24px rgba(20,27,65,0.1)' }} cursor={{ fill: 'rgba(20,27,65,0.02)' }} />
-              <Bar dataKey="critical" fill="var(--critical)" stackId="s" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="high" fill="var(--high)" stackId="s" />
-              <Bar dataKey="medium" fill="var(--medium)" stackId="s" />
+              <Bar dataKey="critical" fill="#b91c1c" stackId="s" />
+              <Bar dataKey="high" fill="#ea580c" stackId="s" />
+              <Bar dataKey="medium" fill="#eab308" stackId="s" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -235,8 +237,15 @@ function RecentDetections({ findings }: { findings: types.Finding[] }) {
 interface StreamAlert extends types.Alert { displayTime: string; glowing: boolean; }
 
 function LiveThreatFeed() {
-  const [alerts, setAlerts] = useState<StreamAlert[]>([]);
-  const [queue, setQueue] = useState<types.Alert[]>(mockAlerts.slice().reverse());
+  const [alerts, setAlerts] = useState<StreamAlert[]>(() => {
+    // Populate with a few initial alerts so it's not empty for 60s
+    return mockAlerts.slice(0, 3).map(a => ({
+      ...a,
+      displayTime: formatRelativeTime(a.timestamp),
+      glowing: false,
+    }));
+  });
+  const [queue, setQueue] = useState<types.Alert[]>(mockAlerts.slice(3).reverse());
 
   useEffect(() => {
     const iv = setInterval(() => {
@@ -249,7 +258,7 @@ function LiveThreatFeed() {
         ].slice(0, 20));
         return q.slice(1);
       });
-    }, 2500);
+    }, 60000); // 1 minute interval for pitch
     return () => clearInterval(iv);
   }, []);
 
@@ -263,7 +272,13 @@ function LiveThreatFeed() {
       <div className="flex items-center justify-between">
         <span className="font-semibold text-[var(--text-primary)] text-sm">Live Threat Feed</span>
         <div className="flex items-center gap-1.5">
-          <div className="relative"><motion.div className="w-2 h-2 bg-[var(--critical)] rounded-full" animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1.5 }} /><motion.div className="absolute inset-0 w-2 h-2 bg-[var(--critical)] rounded-full" animate={{ scale: [1, 2.5], opacity: [0.5, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} /></div>
+          <div className="relative flex items-center justify-center">
+            <motion.div 
+              className="w-2 h-2 bg-[var(--critical)] rounded-full" 
+              animate={{ scale: [1, 1.4, 1], opacity: [0.6, 1, 0.6] }} 
+              transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }} 
+            />
+          </div>
           <span className="text-[10px] font-bold text-[var(--critical)] uppercase tracking-wide">Live</span>
         </div>
       </div>
