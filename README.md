@@ -1,183 +1,121 @@
-# Argus — AI Usage Intelligence
+# ARGUS — AI Usage Intelligence Platform
+## Governing AI adoption — before liability hits.
 
-## Your developers are leaking secrets to AI — and nobody is watching.
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Compliance](https://img.shields.io/badge/Compliance-EU_AI_Act-orange.svg)](#-eu-ai-act-readiness)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Bun](https://img.shields.io/badge/Bun-1.x-000000?logo=bun&logoColor=white)](https://bun.sh)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://postgresql.org)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docker.com)
 
-Real-time secret detection. Malicious package scanning. Cost and compliance visibility.
-Deployed on a Raspberry Pi you ship to any team — no cloud required, working in minutes.
-
-> Full concept: [concept.md](docs/concept.md) | Architecture: [architecture.md](docs/architecture.md) | Pipeline: [docs/pipeline.md](docs/pipeline.md) | Data model: [data-model.md](docs/data-model.md)
 
 ---
 
-## Core Idea
+### 🛡️ The Mission
+**Your employees are using ChatGPT, Claude, and Gemini every day.** They're pasting source code, customer data, and internal documents. That data is leaving your company right now, without visibility and without control.
 
-Argus enables companies to **govern their AI usage** and detect **data integrity leaks** before they become incidents. As enterprises rapidly adopt AI tools across departments, they lose visibility into what sensitive data is being shared with external models, which malicious packages AI might be hallucinating into install commands, and how costs are spiraling without attribution. Argus provides a centralized intelligence layer that monitors, analyzes, and secures all AI interactions — from ChatGPT conversations to Claude Code sessions. By maintaining a complete audit trail with pseudonymized attribution, companies can **stay compliant with emerging AI laws** (EU AI Act) and demonstrate regulatory readiness through a purpose-built overview tool. The platform runs entirely on-premise or on a Raspberry Pi, ensuring zero data egress while delivering enterprise-grade security insights.
+This isn't a hypothetical. This is reality. Leaked secrets, hallucinated packages entering your codebase, and spiraling costs. **ARGUS makes all of this visible.** We help companies govern AI adoption before it becomes a liability.
 
 ---
 
-## Architecture
+### 🚀 Key Capabilities
+
+| Feature | Description |
+| :--- | :--- |
+| **Critical Findings** | Real-time detection of leaked AWS keys, PII (emails, IPs, IBANs), and database credentials. |
+| **Slopsquatting Scan** | Detect hallucinated or malicious packages (e.g., `reqests`, `pandass`) suggested by AI. |
+| **Provider-Agnostic** | One dashboard for all tools. Monitor OpenAI, Anthropic, Gemini, and local Ollama models. |
+| **Compliance Score** | Automated audit trails and risk documentation ready for the **EU AI Act**. |
+| **Cost Intelligence** | Aggregate spend by department and model with recommendations for 40%+ cost savings. |
+
+---
+
+### 📦 The "Ready-to-Go" Lab Device
+We focus on **data integrity**. Once your data leaves your network, you've lost control. We ship ARGUS as a ready-to-go lab device (or on-prem software) that proves your risk exposure.
+
+- **Deterministic & Agentic**: Combines high-speed regex scanning with LLM-powered sensitivity analysis.
+- **Edge Deployment**: Runs entirely inside your walls on affordable hardware like a Raspberry Pi.
+
+---
+
+### 🛠️ Architecture
 
 ```mermaid
 flowchart TB
-    subgraph "Data Sources"
-        CHAT[Chat Exports<br/>ChatGPT, Claude, Gemini, Pi]
-        JSONL[JSONL Logs<br/>IDE integrations]
-        FILES[File Drops<br/>Markdown, JSON]
-    end
-
-    subgraph "Ingestion Layer"
-        IMPORT[Chat Import Service<br/>6+ format parsers]
-        CHATS[(chats table<br/>PostgreSQL)]
+    subgraph "Data Sources (Live & Batch)"
+        PROXY[Live Proxy / API]
+        CHAT[Chat Exports<br/>ChatGPT, Claude, Gemini]
+        JSONL[JSONL Logs<br/>IDE / CLI logs]
     end
 
     subgraph "Analysis Pipeline"
-        WORKER[Analysis Worker<br/>Polls every 15-30s]
+        WORKER[Analysis Worker]
         
         subgraph "Deterministic Analyzers"
-            SECRETS[Secrets Scanner<br/>API keys, tokens, passwords]
+            SECRETS[Secrets Scanner<br/>API keys, tokens]
             PII[PII Detector<br/>Emails, IPs, IBANs]
             SLOP[Slopsquatting Detector<br/>Hallucinated packages]
         end
         
-        subgraph "LLM Analyzers"
-            TRIVIAL[Trivial Usage<br/>Productive vs wasteful]
-            SENSITIVITY[Sensitivity Analysis<br/>Business-critical content]
-            COMPLEXITY[Complexity Scoring<br/>1-10 scale]
+        subgraph "Agentic Analyzers (LLM)"
+            SENSITIVITY[Sensitivity Analysis]
+            QUALITY[Usage Quality Scan]
+            COMPLIANCE[EU AI Act Scoring]
         end
-        
-        META[Meta Analyzer<br/>Risk aggregation]
-        REC[Recommender Agent<br/>Security/Cost advice]
     end
 
-    subgraph "Storage Layer"
-        FINDINGS[(findings table<br/>PostgreSQL)]
-        VIEWS[Materialized Views<br/>Pre-computed aggregates]
-        NEO4J[(Neo4j<br/>Knowledge graphs)]
-        REDIS[(Redis<br/>Cache + Sessions)]
+    subgraph "Storage & Intelligence"
+        PG[(PostgreSQL<br/>Audit Trails)]
+        VIEWS[Materialized Views<br/>Risk Aggregates]
+        REC[Recommender Agent<br/>Cost/Security Advice]
     end
 
-    subgraph "API Layer"
-        FASTAPI[FastAPI<br/>:8000]
-        DASHBOARD_API[Dashboard Endpoints]
-        AGENTS_API[Agent Endpoints<br/>5 frameworks]
+    subgraph "Command Center"
+        FASTAPI[FastAPI Backend]
+        REACT[React Dashboard]
     end
 
-    subgraph "Frontend"
-        REACT[React + Vite + Tailwind<br/>:3000]
-        DASHBOARD[Command Center<br/>Real-time monitoring]
-        COMPLIANCE[Compliance Dashboard<br/>EU AI Act readiness]
-    end
-
-    CHAT --> IMPORT
-    JSONL --> IMPORT
-    FILES --> IMPORT
-    IMPORT --> CHATS
+    PROXY --> WORKER
+    CHAT --> WORKER
+    JSONL --> WORKER
     
-    CHATS --> WORKER
-    WORKER --> SECRETS
-    WORKER --> PII
-    WORKER --> SLOP
-    WORKER --> TRIVIAL
-    WORKER --> SENSITIVITY
-    WORKER --> COMPLEXITY
+    WORKER --> SECRETS & PII & SLOP
+    WORKER --> SENSITIVITY & QUALITY & COMPLIANCE
     
-    SECRETS --> FINDINGS
-    PII --> FINDINGS
-    SLOP --> FINDINGS
-    TRIVIAL --> FINDINGS
-    SENSITIVITY --> FINDINGS
-    COMPLEXITY --> FINDINGS
+    SECRETS & PII & SLOP --> PG
+    SENSITIVITY & QUALITY & COMPLIANCE --> PG
     
-    FINDINGS --> META
-    META --> REC
+    PG --> VIEWS
+    VIEWS --> REC
     REC --> VIEWS
     
-    FINDINGS --> VIEWS
-    CHATS --> VIEWS
-    
-    VIEWS --> DASHBOARD_API
-    FINDINGS --> DASHBOARD_API
-    
-    DASHBOARD_API --> FASTAPI
-    AGENTS_API --> FASTAPI
-    
+    VIEWS --> FASTAPI
     FASTAPI --> REACT
-    REACT --> DASHBOARD
-    REACT --> COMPLIANCE
-    
-    FASTAPI <--> NEO4J
-    FASTAPI <--> REDIS
 ```
 
 ---
 
-## Quickstart
+### 🏁 Quickstart for Judges
+Follow these steps to launch the ARGUS production environment.
 
-```bash
-# 1. Create .env
-cp .env.example .env
-# → Add GOOGLE_API_KEY for LLM analysis
+1.  **Ensure Docker is installed** and the domain/TLS is configured (for production).
+2.  **Setup Environment**:
+    ```bash
+    cp .env.example .env
+    # Edit .env and populate GOOGLE_API_KEY
+    ```
+3.  **Start Platform**:
+    ```bash
+    docker compose up -d
+    ```
 
-# 2. Start the stack (backend + frontend + postgres + redis)
-docker compose up -d
 
-# 3. Seed demo data
-task seed-database
-task import-chats
-
-# 4. Open
-# Frontend:  http://localhost:3000
-# API docs:  http://localhost:8000/docs
-```
-
-### Useful commands
-
-```bash
-task up              # Start services
-task down            # Stop services
-task logs            # Tail logs
-task test            # Run backend tests
-task lint            # Lint backend
-task nuke            # Stop + delete all volumes
-```
+**Access URLs:**
+- **Frontend Command Center**: `http://localhost:3000`
 
 ---
-
-## Stack
-
-| Component | Tech | Port |
-|-----------|------|------|
-| **Backend** | FastAPI + Python 3.12 (uv) | `:8000` |
-| **Worker** | Analysis pipeline (same image, sidecar) | — |
-| **Frontend** | React + Vite + TailwindCSS | `:3000` |
-| **Database** | PostgreSQL 16 | `:5432` |
-| **LLM** | Gemini Flash (switchable via `MODEL_PROVIDER`) | — |
-
-### Optional services
-
-```bash
-# Neo4j, ChromaDB, Rust worker
-docker compose --profile extras up -d
-
-# Observability (Jaeger, Prometheus, Grafana)
-docker compose --profile observability up -d
-```
-
----
-
-## What It Does
-
-1. **Import** — Ingests AI chat exports (ChatGPT, Gemini, Claude, Pi, AntiGravity)
-2. **Scan** — Deterministic regex: secrets, PII, slopsquatting
-3. **Analyze** — LLM analysis: trivial usage, sensitivity, complexity scoring
-4. **Dashboard** — Materialized views → fast API endpoints → React frontend
-5. **Agent** — Gemini-powered agent with tools to query findings in natural language
-
----
-
-## Security & DSGVO
-
-- No real user data in demo — all hashed/pseudonymized
-- Secrets scanner runs on local LLMs too (on-device)
-- LLM prompts use only anonymized aggregate data
-- Audit-logging structured for EU AI Act compliance
