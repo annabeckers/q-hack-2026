@@ -52,6 +52,7 @@ app = FastAPI(
         {"name": "dashboard", "description": "AI usage intelligence dashboard"},
         {"name": "webhooks", "description": "External event ingestion"},
         {"name": "metrics", "description": "Prometheus-style metrics"},
+        {"name": "slopsquatting", "description": "Typosquat / slopsquat detection"},
     ],
 )
 
@@ -67,6 +68,7 @@ from app.api.v1.endpoints.webhooks import router as webhooks_router
 from app.api.v1.endpoints.metrics import router as metrics_router
 from app.api.v1.endpoints.data_stream import router as data_stream_router
 from app.api.v1.endpoints.autonomous import router as autonomous_router
+from app.api.v1.endpoints.slopsquatting import router as slopsquatting_router
 from app.api.v1.endpoints.dashboard import router as dashboard_router
 from app.api.v1.endpoints.auth import router as auth_router
 
@@ -80,6 +82,7 @@ app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"]
 app.include_router(metrics_router, prefix="/api/v1", tags=["metrics"])
 app.include_router(data_stream_router, prefix="/api/v1/data", tags=["data"])
 app.include_router(autonomous_router, prefix="/api/v1/autonomous", tags=["autonomous"])
+app.include_router(slopsquatting_router, prefix="/api/v1/slopsquatting", tags=["slopsquatting"])
 
 # GraphQL (optional — uncomment to enable GraphiQL at /graphql)
 # from app.api.graphql import graphql_router

@@ -50,6 +50,15 @@ apis:
       username_env: BASIC_AUTH_USER
       password_env: BASIC_AUTH_PASS
 
+  # ── ecosyste.ms (package registry metadata) ─────────
+  ecosystems:
+    base_url: https://packages.ecosyste.ms/api/v1
+    auth_type: none
+    auth_config: {}
+    headers:
+      User-Agent: hackathon-slopsquatting/1.0
+    cache_ttl: 3600
+
   # ── Blank / Custom Template ─────────────────────────
   # Copy this and fill in your hackathon API details
   custom_template:
